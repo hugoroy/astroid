@@ -129,6 +129,10 @@ hr {
     /* use a left border indicator for focused/unfocused email */
     padding-left: 7px;
 
+    .email_warning, .email_info {
+        margin: 7px 7px 0 0;
+    }
+
     &.focused {
         padding-left: 1px;
         border-left: 6px solid;

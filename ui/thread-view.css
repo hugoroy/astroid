@@ -98,6 +98,8 @@ hr {
     margin-right: auto !important; }
   .email > .email > .email > .email > .email {
     font-size: 90%; }
+  .email .email_warning, .email .email_info {
+    margin: 7px 7px 0 0; }
   .email.focused {
     padding-left: 1px;
     border-left: 6px solid;
