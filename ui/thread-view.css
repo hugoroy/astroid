@@ -76,8 +76,10 @@ hr {
   box-shadow: inset 0px 0px 1px rgba(0, 0, 0, 0.05); }
 
 .email {
+  font-size: 16px;
   /* border: 1px rgba(0,0,0,1) solid; */
-  border-bottom: 1px solid #d8d8d8;
+  border: 1px solid #d8d8d8;
+  border-width: 1px 0px;
   background-color: #ffffff !important;
   color: black;
   /*font-size: small;*/
@@ -91,7 +93,7 @@ hr {
   /*min-width: 48em;*/
   box-sizing: border-box;
   text-align: left;
-  margin: 0;
+  margin: 3px 0;
   /* use a left border indicator for focused/unfocused email */
   padding-left: 7px; }
   .email + .email {
@@ -176,7 +178,7 @@ hr {
 
 .email_container .header_container .preview {
   /*font-size: 8pt;*/
-  font-size: small;
+  font-size: 0.8em;
   color: #777;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -185,7 +187,7 @@ hr {
 
 .email_container .header_container .tags {
   /*font-size: 8pt;*/
-  font-size: x-small;
+  font-size: 0.7em;
   color: #31587a;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -194,7 +196,7 @@ hr {
 
 .email_container .header_container .subject {
   /*font-size: 8pt;*/
-  font-size: x-small;
+  font-size: 0.7em;
   color: #000;
   white-space: nowrap;
   text-overflow: ellipsis;
