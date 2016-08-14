@@ -99,27 +99,37 @@ namespace Astroid {
 
     /* load message source */
     log << info << "rm: loading message from file: " << fname << endl;
-    ifstream f (fname);
 
     refptr<Gtk::TextBuffer> buf = tv.get_buffer ();
     stringstream s;
-    s << f.rdbuf ();
-    std::string _in = s.str ();
 
-    int len    = _in.size ();
-    gchar * in = (gchar *) _in.c_str ();
+    /* add filenames */
+    s << "Filename: " << fname << endl << endl;
+
+    ifstream f (fname);
+    std::filebuf  * pbuf = f.rdbuf ();
+    size_t fsz = pbuf->pubseekoff (0, f.end, f.in);
+    pbuf->pubseekpos (0, f.in);
+
+    char * fbuf = new char[fsz];
+    pbuf->sgetn (fbuf, fsz);
+    f.close ();
 
     /* convert */
     gsize read, written;
     GError * err = NULL;
-    gchar * out = g_convert_with_fallback (in, len, "UTF-8", "ASCII", NULL,
+    gchar * out = g_convert_with_fallback (fbuf, fsz, "UTF-8", "ASCII", NULL,
                                            &read, &written, &err);
-
     if (out != NULL) {
-      buf->set_text ( out, out+written);
+      s.write (out, written);
     } else {
-      log << error << "raw: could not convert: " << in << endl;
+      log << error << "raw: could not convert: " << fbuf << endl;
+      s << "Error: Could not convert input to UTF-8.";
     }
+
+    buf->set_text ( s.str () );
+
+    delete [] fbuf;
 
     g_free (out);
   }
@@ -135,20 +145,28 @@ namespace Astroid {
     refptr<Gtk::TextBuffer> buf = tv.get_buffer ();
 
     auto c = msg->raw_contents ();
+
+    stringstream s;
+
+    /* add filenames */
+    s << "Filename: " << msg->fname << endl << endl;
+
     gchar * in = (gchar *) c->get_data ();
-    int len    = c->size ();
+    int len = c->size ();
 
     /* convert */
     gsize read, written;
     GError * err = NULL;
     gchar * out = g_convert_with_fallback (in, len, "UTF-8", "ASCII", NULL,
                                            &read, &written, &err);
-
     if (out != NULL) {
-      buf->set_text ( out, out+written);
+      s.write (out, written);
     } else {
       log << error << "raw: could not convert: " << in << endl;
+      s << "Error: Could not convert input to UTF-8.";
     }
+
+    buf->set_text ( s.str () );
 
     g_free (out);
   }

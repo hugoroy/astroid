@@ -376,13 +376,12 @@ namespace Astroid {
 
         main_window->add_mode (new EditMessage (main_window, uri));
 
-      } else if (scheme == "id") {
-        /* TODO: open thread (doesnt work yet) */
+      } else if (scheme == "id" || scheme == "mid" ) {
         main_window->add_mode (new ThreadIndex (main_window, uri));
 
-      } else if (scheme == "http" || scheme == "https" || scheme == "ftp")
-      {
+      } else if (scheme == "http" || scheme == "https" || scheme == "ftp") {
         open_link (uri);
+
       } else {
 
         log << error << "tv: unknown uri scheme. not opening." << endl;
@@ -899,7 +898,14 @@ namespace Astroid {
       DomUtils::select (WEBKIT_DOM_NODE(div_message), "div.email_container");
 
     /* build header */
-    insert_header_address (header, "From", Address(m->sender), true);
+    Address sender (m->sender);
+    insert_header_address (header, "From", sender, true);
+
+    if (m->reply_to.size () > 0) {
+      Address reply_to (m->reply_to);
+      if (reply_to.email () != sender.email())
+        insert_header_address (header, "Reply-To", reply_to, false);
+    }
 
     insert_header_address_list (header, "To", AddressList(m->to()), false);
 
@@ -2783,6 +2789,17 @@ namespace Astroid {
         "Yank raw content of current element or message to primary clipboard",
         [&] (Key) {
           element_action (EYankRaw);
+          return true;
+        });
+
+    keys.register_key ("C-y", "thread_view.yank_mid",
+        "Yank the Message-ID of the focused message to primary clipboard",
+        [&] (Key) {
+          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          cp->set_text (focused_message->mid);
+
+          log << info << "tv: " << focused_message->mid << " copied to primary clipboard." << endl;
+
           return true;
         });
 

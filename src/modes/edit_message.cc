@@ -113,14 +113,33 @@ namespace Astroid {
     /* set up message id and random server name for editor */
     id = edit_id++;
 
-    char hostname[1024];
-    hostname[1023] = 0;
-    gethostname (hostname, 1022);
-
+    ustring _mid = "";
     msg_time = time(0);
-    ustring _mid = UstringUtils::random_alphanumeric (10);
 
-    _mid = ustring::compose ("%1.astroid.%2@%3", msg_time, _mid, hostname);
+# ifndef DISABLE_PLUGINS
+    if (!astroid->plugin_manager->astroid_extension->generate_mid (_mid)) {
+# endif
+
+      char _hostname[1024];
+      _hostname[1023] = 0;
+      gethostname (_hostname, 1023);
+
+      ustring hostname = astroid->config ().get <string> ("mail.message_id_fqdn");
+      UstringUtils::trim (hostname);
+      if (hostname.empty ()) hostname = _hostname;
+
+
+      ustring user = astroid->config ().get<string> ("mail.message_id_user");
+      UstringUtils::trim (user);
+      if (user.empty ()) user = "astroid";
+
+      _mid = UstringUtils::random_alphanumeric (10);
+
+      _mid = ustring::compose ("%1.%2.%3@%4", msg_time, _mid, user, hostname);
+
+# ifndef DISABLE_PLUGINS
+    }
+# endif
 
     if (msg_id == "") {
       msg_id = _mid;
@@ -216,6 +235,16 @@ namespace Astroid {
           if (!message_sent && !sending_in_progress.load()) {
             ask_yes_no ("Really send message?", [&](bool yes){ if (yes) send_message (); });
           }
+          return true;
+        });
+
+    keys.register_key ("C-c", "edit_message.cancel",
+        "Cancel sending message (unreliable)",
+        [&] (Key) {
+          if (!message_sent && sending_in_progress.load ()) {
+            sending_message->cancel_sending ();
+          }
+
           return true;
         });
 
@@ -820,7 +849,7 @@ namespace Astroid {
       fields_show ();
 
       pixbuf = theme->load_icon (
-         "error",
+         "dialog-error",
           Notebook::icon_size,
           Gtk::ICON_LOOKUP_USE_BUILTIN | Gtk::ICON_LOOKUP_FORCE_SIZE);
     }
@@ -882,11 +911,6 @@ namespace Astroid {
     tmpfile_path = tmpfile_path / path(msg_id);
 
     log << info << "em: tmpfile: " << tmpfile_path << endl;
-
-    if (!is_directory(astroid->standard_paths ().runtime_dir)) {
-      log << warn << "em: making runtime dir.." << endl;
-      create_directories (astroid->standard_paths ().runtime_dir);
-    }
 
     if (is_regular_file (tmpfile_path)) {
       log << error << "em: error: tmpfile already exists!" << endl;

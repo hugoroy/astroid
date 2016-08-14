@@ -187,6 +187,9 @@ namespace Astroid {
     default_config.put ("mail.forward.quote_line", "Forwarding %1's message of %2:"); // %1 = author, %2 = pretty_verbose_date
     default_config.put ("mail.forward.disposition", "inline");
     default_config.put ("mail.sent_tags", "sent");
+    default_config.put ("mail.message_id_fqdn", ""); // custom fqdn for the message id: default: local hostname
+    default_config.put ("mail.message_id_user", ""); // custom user for the message id: default: 'astroid'
+    default_config.put ("mail.user_agent", "default");
 
     /* polling */
     default_config.put ("poll.interval", Poll::DEFAULT_POLL_INTERVAL); // seconds
@@ -271,6 +274,10 @@ namespace Astroid {
       create_directories (std_paths.config_dir);
     }
 
+    if (!is_directory(std_paths.runtime_dir)) {
+      log << warn << "cf: making runtime dir.." << endl;
+      create_directories (std_paths.runtime_dir);
+    }
 
     if (!is_regular_file (std_paths.config_file)) {
       if (!initial) {
