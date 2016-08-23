@@ -30,7 +30,7 @@
 
 /* Fonts */
 @if not(global-variable-exists(font-base-size)) {
-  $font-base-size: 14px !global;
+  $font-base-size: 16px !global;
 }
 
 @if not(global-variable-exists(font-mono)) {
@@ -38,11 +38,11 @@
 }
 
 @if not(global-variable-exists(font-sans)) {
-  $font-sans: "Input Sans", "Roboto", sans-serif !global;
+  $font-sans: sans-serif !global;
 }
 
 @if not(global-variable-exists(font-family-default)) {
-  $font-family-default: $font-mono !global;
+  $font-family-default: $font-sans !global;
 }
 
 /* Colours */
