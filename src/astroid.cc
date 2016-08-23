@@ -9,6 +9,20 @@
 # include <boost/program_options.hpp>
 # include <boost/filesystem.hpp>
 
+/* log */
+# include <boost/log/core.hpp>
+# include <boost/log/utility/setup/file.hpp>
+# include <boost/log/utility/setup/console.hpp>
+# include <boost/log/utility/setup/common_attributes.hpp>
+# include <boost/log/sinks/text_file_backend.hpp>
+# include <boost/log/sources/severity_logger.hpp>
+# include <boost/log/sources/record_ostream.hpp>
+# include <boost/log/utility/setup/filter_parser.hpp>
+# include <boost/log/utility/setup/formatter_parser.hpp>
+# include <boost/date_time/posix_time/posix_time_types.hpp>
+# include <boost/log/expressions.hpp>
+# include <boost/log/support/date_time.hpp>
+
 # include "astroid.hh"
 # include "build_config.hh"
 # include "db.hh"
@@ -23,7 +37,6 @@
   # include "plugin/manager.hh"
 # endif
 
-# include "log.hh"
 # include "poll.hh"
 
 /* UI */
@@ -38,26 +51,43 @@
 using namespace std;
 using namespace boost::filesystem;
 
+namespace logging   = boost::log;
+namespace keywords  = boost::log::keywords;
+namespace expr      = boost::log::expressions;
+
 /* globally available static instance of the Astroid */
 Astroid::Astroid * (Astroid::astroid);
-Astroid::Log Astroid::log;
 const char* const Astroid::Astroid::version = GIT_DESC;
 
 namespace Astroid {
+  void Astroid::init_log () {
+    /* log to console */
+    logging::add_common_attributes ();
+    logging::formatter format =
+                  expr::stream
+                      << "["
+                      << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "%Y-%m-%d %H:%M:%S.%f")
+                      << "] [" << expr::attr <boost::log::attributes::current_thread_id::value_type>("ThreadID")
+                      << "] [" << logging::trivial::severity
+                      << "] " << expr::smessage
+              ;
+
+    logging::add_console_log ()->set_formatter (format);
+  }
+
   Astroid::Astroid () {
     setlocale (LC_ALL, "");
     Glib::init ();
+    init_log ();
 
-    log.add_out_stream (&cout);
-
-    log << info << "welcome to astroid! - " << Astroid::version << endl;
+    LOG (info) << "welcome to astroid! - " << Astroid::version;
 
     string charset;
     Glib::get_charset(charset);
-    log << debug << "utf8: " << Glib::get_charset () << ", " << charset << endl;
+    LOG (debug) << "utf8: " << Glib::get_charset () << ", " << charset;
 
     if (!Glib::get_charset()) {
-      log << error << "astroid needs an UTF-8 locale! this is probably not going to work." << endl;
+      LOG (error) << "astroid needs an UTF-8 locale! this is probably not going to work.";
     }
 
     /* user agent */
@@ -110,30 +140,42 @@ namespace Astroid {
 
     }
 
+    /* log to file */
     if (vm.count ("log")) {
       ustring lfile = vm["log"].as<ustring> ();
-      if (vm.count ("append-log")) {
-        logf.open (lfile, std::ofstream::out | std::ofstream::app);
-      } else {
-        logf.open (lfile, std::ofstream::out);
-      }
-      if (logf.good ()) {
-        log.add_out_stream (&logf);
-        log << info << "logging to: " << lfile << endl;
-      } else {
-        if (logf.is_open ()) logf.close ();
-        log << error << "could not open: " << lfile << " for logging.." << endl;
-      }
+      bool append = vm.count ("append-log");
+
+      std::ios_base::openmode om = std::ofstream::out;
+      if (append) om |= std::ofstream::app;
+
+      logging::add_file_log (
+          keywords::file_name   = lfile.c_str (),
+          keywords::auto_flush  = true,
+          keywords::open_mode   = om,
+
+          keywords::format =
+                (
+                  expr::stream
+                      << "["
+                      << expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "%Y-%m-%d %H:%M:%S.%f")
+                      << "] [" << expr::attr <boost::log::attributes::current_thread_id::value_type>("ThreadID")
+                      << "] [" << logging::trivial::severity
+                      << "] " << expr::smessage
+              )
+          );
+
+      LOG (info) << "logging to: " << lfile << " (append: " << append << ")";
     }
+
 
     /* make new config {{{ */
     if (vm.count("new-config")) {
       if (test_config) {
-        log << error << "--new-config cannot be specified together with --test-config." << endl;
+        LOG (error) << "--new-config cannot be specified together with --test-config.";
         exit (1);
       }
 
-      log << info << "creating new config.." << endl;
+      LOG (info) << "creating new config..";
       ustring cnf;
 
       Config ncnf (false, true);
@@ -142,7 +184,7 @@ namespace Astroid {
         cnf = vm["config"].as<ustring>().c_str();
 
         if (exists (path(cnf))) {
-          log << error << "the config file: " << cnf << " already exists." << endl;
+          LOG (error) << "the config file: " << cnf << " already exists.";
           exit (1);
         }
 
@@ -151,12 +193,12 @@ namespace Astroid {
       } else {
         /* use default */
         if (exists(ncnf.std_paths.config_file)) {
-          log << error << "the config file: " << ncnf.std_paths.config_file.c_str() << " already exists." << endl;
+          LOG (error) << "the config file: " << ncnf.std_paths.config_file.c_str() << " already exists.";
           exit (1);
         }
       }
 
-      log << info << "writing default config to: " << ncnf.std_paths.config_file.c_str() << endl;
+      LOG (info) << "writing default config to: " << ncnf.std_paths.config_file.c_str();
       ncnf.load_config (true);
 
       exit (0);
@@ -165,7 +207,7 @@ namespace Astroid {
     bool no_auto_poll = false;
 
     if (vm.count ("no-auto-poll")) {
-      log << info << "astroid: automatic polling is off." << endl;
+      LOG (info) << "astroid: automatic polling is off.";
 
       no_auto_poll = true;
     }
@@ -181,21 +223,21 @@ namespace Astroid {
       domailto = true;
       mailtourl = vm["mailto"].as<ustring>();
 
-      log << debug << "astroid: composing mail to: " << mailtourl << endl;
+      LOG (debug) << "astroid: composing mail to: " << mailtourl;
     }
 
     /* set up gtk */
-    log << debug << "loading gtk.." << endl;
+    LOG (debug) << "loading gtk..";
     int aargc = 1; // TODO: allow GTK to get some options aswell.
     app = Gtk::Application::create (aargc, argv, "org.astroid");
 
     app->register_application ();
 
     if (app->is_remote ()) {
-      log << warn << "astroid: instance already running, opening new window.." << endl;
+      LOG (warn) << "astroid: instance already running, opening new window..";
 
       if (no_auto_poll) {
-        log << warn << "astroid: specifying no-auto-poll only makes sense when starting a new astroid instance, ignoring." << endl;
+        LOG (warn) << "astroid: specifying no-auto-poll only makes sense when starting a new astroid instance, ignoring.";
       }
 
       if (domailto) {
@@ -228,11 +270,11 @@ namespace Astroid {
     /* load config */
     if (vm.count("config")) {
       if (test_config) {
-        log << error << "--config cannot be specified together with --test-config." << endl;
+        LOG (error) << "--config cannot be specified together with --test-config.";
         exit (1);
       }
 
-      log << "astroid: loading config: " << vm["config"].as<ustring>().c_str() << endl;
+      LOG (info) << "astroid: loading config: " << vm["config"].as<ustring>().c_str();
       m_config = new Config (vm["config"].as<ustring>().c_str());
     } else {
       if (test_config) {
@@ -244,7 +286,7 @@ namespace Astroid {
 
     /* output db location */
     ustring db_path = ustring (notmuch_config().get<string> ("database.path"));
-    log << info << "notmuch db: " << db_path << endl;
+    LOG (info) << "notmuch db: " << db_path;
 
     /* set up static classes */
     Date::init ();
@@ -311,6 +353,7 @@ namespace Astroid {
 # ifndef DISABLE_PLUGINS
     /* set up plugins */
     plugin_manager = new PluginManager (false, true);
+    plugin_manager->astroid_extension = new PluginManager::AstroidExtension (this);
 # endif
 
     /* set up contacts */
@@ -328,7 +371,7 @@ namespace Astroid {
   }
 
   void Astroid::on_quit () {
-    log << debug << "astroid: quitting.." << endl;
+    LOG (debug) << "astroid: quitting..";
 
     /* clean up and exit */
     if (actions) actions->close ();
@@ -339,12 +382,7 @@ namespace Astroid {
     if (plugin_manager) delete plugin_manager;
 # endif
 
-    if (logf.is_open()) {
-      log.del_out_stream (&logf);
-      logf.close ();
-    }
-
-    log << info << "astroid: goodbye!" << endl;
+    LOG (info) << "astroid: goodbye!";
   }
 
   Astroid::~Astroid () {
@@ -355,12 +393,10 @@ namespace Astroid {
 
     if (actions) actions->close ();
     delete actions;
-
-    log.del_out_stream (&cout);
   }
 
   MainWindow * Astroid::open_new_window (bool open_defaults) {
-    log << warn << "astroid: starting a new window.." << endl;
+    LOG (warn) << "astroid: starting a new window..";
 
     /* set up a new main window */
 
@@ -380,7 +416,7 @@ namespace Astroid {
         ustring name = kv.first;
         ustring query = kv.second.data();
 
-        log << info << "astroid: got query: " << name << ": " << query << endl;
+        LOG (info) << "astroid: got query: " << name << ": " << query;
         Mode * ti = new ThreadIndex (mw, query, name);
         ti->invincible = true; // set startup queries to be invincible
         mw->add_mode (ti);
@@ -411,7 +447,7 @@ namespace Astroid {
   }
 
   void Astroid::send_mailto (MainWindow * mw, ustring url) {
-    log << info << "astorid: mailto: " << url << endl;
+    LOG (info) << "astorid: mailto: " << url;
 
     ustring scheme = Glib::uri_parse_scheme (url);
     if (scheme.length () > 0) {

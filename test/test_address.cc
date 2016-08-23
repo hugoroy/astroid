@@ -5,9 +5,11 @@
 # include "test_common.hh"
 
 # include "utils/address.hh"
+# include "message_thread.hh"
 
 using Astroid::Address;
 using Astroid::AddressList;
+using Astroid::Message;
 
 BOOST_AUTO_TEST_SUITE(TestAddressA)
 
@@ -15,17 +17,15 @@ BOOST_AUTO_TEST_SUITE(TestAddressA)
   {
     setup ();
 
-    using Astroid::log;
-
     ustring ar = "A B <test@example.com>";
     Address a (ar);
-    log << test << "address: " << a.full_address () << endl;
+    LOG (test) << "address: " << a.full_address ();
 
     BOOST_CHECK (ar == a.full_address ());
 
     ar = "\"B, A\" <test@example.com>";
     a = Address (ar);
-    log << test << "address: " << a.full_address () << endl;
+    LOG (test) << "address: " << a.full_address ();
 
     BOOST_CHECK (ar == a.full_address ());
 
@@ -39,12 +39,29 @@ BOOST_AUTO_TEST_SUITE(TestAddressA)
      */
     ar = "=?utf-8?B?Ik3DvHR0ZXIsIEEi?= <a.b@c.com>";
     a = Address (ar);
-    log << test << "address: " << a.full_address () << endl;
+    LOG (test) << "address: " << a.full_address ();
 
     BOOST_CHECK ("\"Mütter, A\" <a.b@c.com>" == a.full_address ());
 
     AddressList al (a);
     BOOST_CHECK ("\"Mütter, A\" <a.b@c.com>" == al.str());
+
+    teardown ();
+  }
+
+  BOOST_AUTO_TEST_CASE(utf8_isspace)
+  {
+    setup ();
+
+    Message m ("test/mail/test_mail/isspace-fail-utf-8.eml");
+    LOG (test) << m.sender;
+
+    Address ma (m.sender);
+    ustring b = ma.fail_safe_name ();
+    LOG (test) << "address: " << b;
+
+    Address testspace (" Hey", "");
+    BOOST_CHECK ("Hey" == testspace.fail_safe_name ());
 
     teardown ();
   }

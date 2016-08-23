@@ -302,14 +302,34 @@ if not conf.CheckLib ('boost_program_options', language = 'c++'):
   print "boost_program_options does not seem to be installed."
   Exit (1)
 
+if not conf.CheckLib ('boost_log_setup', language = 'c++'):
+  print "boost_log_setup does not seem to be installed."
+  Exit (1)
+
+if not conf.CheckLib ('boost_log', language = 'c++'):
+  print "boost_log does not seem to be installed."
+  Exit (1)
+
+if not conf.CheckLib ('boost_thread', language = 'c++'):
+  print "boost_thread does not seem to be installed."
+  Exit (1)
+
+if not conf.CheckLib ('boost_date_time', language = 'c++'):
+  print "boost_date_time does not seem to be installed."
+  Exit (1)
+
 libs   = ['notmuch',
           'boost_filesystem',
           'boost_system',
           'boost_program_options',
+          'boost_log_setup',
+          'boost_log',
+          'boost_thread',
+          'boost_date_time',
           'stdc++']
 
 env.AppendUnique (LIBS = libs)
-env.AppendUnique (CPPFLAGS = ['-Wall', '-std=c++11', '-pthread'] )
+env.AppendUnique (CPPFLAGS = ['-Wall', '-std=c++11', '-pthread', '-DBOOST_LOG_DYN_LINK'] )
 
 if debug:
   env.AppendUnique (CPPFLAGS = ['-g', '-Wextra', '-DDEBUG'])
