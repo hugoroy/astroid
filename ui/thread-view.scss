@@ -30,7 +30,7 @@
 
 /* Fonts */
 @if not(global-variable-exists(font-base-size)) {
-  $font-base-size: 16px !global;
+  $font-base-size: 12.25px !global;
 }
 
 @if not(global-variable-exists(font-mono)) {
@@ -98,7 +98,7 @@
         display: none !important;
     }
 
-    .email.print .tags {
+    .email.rint .tags {
         display: none !important;
     }
 
@@ -383,9 +383,12 @@ body:not(.nohide) .email.hide .header_container .avatar {
     padding-top: 25px;
     overflow-x: auto;
     overflow-y: hidden;
+    line-height: 19px;
 
-    .body_part a {
-	word-break: break-all;
+    .body_part {
+        a {
+	    word-break: break-all;
+	}
     }
     
 }
@@ -811,7 +814,6 @@ body.nohide .email .compressed_note > span {
 .header {
     overflow: hidden;
     font-size: 90%;
-    font-family: "Input Sans Narrow";
 
     #Tags {
 	.value span {
