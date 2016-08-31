@@ -30,7 +30,7 @@
 
 /* Fonts */
 @if not(global-variable-exists(font-base-size)) {
-  $font-base-size: 12.25px !global;
+  $font-base-size: 13px !global;
 }
 
 @if not(global-variable-exists(font-mono)) {
