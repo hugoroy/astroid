@@ -783,8 +783,7 @@ body.nohide .email .compressed_note > span {
     color: darken( $sibling-color, 80% );
 
     .message {
-	padding-top: 6px;
-	padding-bottom: 6px;
+	padding: 6px;
 	font-size: 90%;
     }
 
