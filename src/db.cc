@@ -766,6 +766,23 @@ namespace Astroid {
     astroid->actions->emit_thread_updated (db, thread_id);
   }
 
+  bool NotmuchThread::matches (std::vector<ustring> &k) {
+    if (index_str.empty ()) {
+      index_str = subject;
+      for (auto &a : authors)  index_str += get<0>(a);
+      for (auto &t : tags)     index_str += t;
+      index_str += thread_id;
+      index_str = index_str.lowercase ();
+    }
+
+    /* match all keys (AND) */
+    return std::all_of (k.begin (), k.end (),
+        [&] (ustring &kk)
+          {
+            return index_str.find (kk) != string::npos;
+          });
+  }
+
   ustring NotmuchThread::str () {
     return "threadid:" + thread_id;
   }

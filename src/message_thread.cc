@@ -13,6 +13,7 @@
 # include "utils/date_utils.hh"
 # include "utils/address.hh"
 # include "utils/ustring_utils.hh"
+# include "utils/vector_utils.hh"
 # include "actions/action_manager.hh"
 
 using namespace std;
@@ -383,14 +384,38 @@ namespace Astroid {
       if (c->mime_message)
         mime_messages.push_back (c);
 
-      for_each (c->kids.begin(),
-                c->kids.end (),
-                app_mm);
+      if (!c->mime_message)
+        for_each (c->kids.begin(),
+                  c->kids.end (),
+                  app_mm);
     };
 
     if (root) app_mm (root);
 
     return mime_messages;
+  }
+
+  vector<refptr<Chunk>> Message::mime_messages_and_attachments () {
+    /* return a flat vector of mime messages and attachments in correct order */
+
+    vector<refptr<Chunk>> parts;
+
+    function< void (refptr<Chunk>) > app_part =
+      [&] (refptr<Chunk> c)
+    {
+      if (c->mime_message || c->attachment)
+        parts.push_back (c);
+
+      /* do not descend for mime messages */
+      if (!c->mime_message)
+        for_each (c->kids.begin(),
+                  c->kids.end (),
+                  app_part);
+    };
+
+    if (root) app_part (root);
+
+    return parts;
   }
 
   ustring Message::date () {
@@ -721,6 +746,14 @@ namespace Astroid {
          Glib::Regex::match_simple ("\\[PATCH.*\\]", subject));
   }
 
+  bool Message::is_encrypted () {
+    return has (tags, ustring("encrypted"));
+  }
+
+  bool Message::is_signed () {
+    return has (tags, ustring("signed"));
+  }
+
   /************
    * exceptions
    * **********
@@ -794,6 +827,43 @@ namespace Astroid {
           add_replies (message, level + 1);
 
         }
+
+        /* check if all messages are shown: #243
+         *
+         * if at some point notmuch fixes this bug this code should be
+         * removed for those versions of notmuch */
+        if (messages.size() != (unsigned int) notmuch_thread_get_total_messages (nm_thread))
+        {
+          ustring mid;
+          LOG (error) << "message: thread count not met! Brute force!";
+          for (qmessages = notmuch_thread_get_messages (nm_thread);
+               notmuch_messages_valid (qmessages);
+               notmuch_messages_move_to_next (qmessages)) {
+            bool found;
+            found = false;
+
+            message = notmuch_messages_get (qmessages);
+
+            mid = notmuch_message_get_message_id (message);
+            LOG (error) << "mid: " << mid;
+
+            for (unsigned int i = 0; i < messages.size(); i ++)
+            {
+              if (messages[i]->mid == mid)
+              {
+                found = true;
+                break;
+              }
+            }
+            if ( ! found )
+            {
+              LOG (error) << "mid: " << mid << " was missing!";
+              messages.push_back (refptr<Message>(new Message (message, 0)));
+            }
+          }
+
+        }
+
       });
   }
 

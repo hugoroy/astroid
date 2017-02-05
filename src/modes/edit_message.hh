@@ -17,6 +17,7 @@
 # include "mode.hh"
 # include "editor/editor.hh"
 # include "editor/plugin.hh"
+# include "editor/external.hh"
 # include "compose_message.hh"
 # include "account_manager.hh"
 # include "thread_view/thread_view.hh"
@@ -25,13 +26,18 @@ namespace Astroid {
   class EditMessage : public Mode {
     friend Editor;
     friend Plugin;
+    friend External;
 
     public:
-      EditMessage (MainWindow *);
+      EditMessage (MainWindow *, bool edit_when_ready = true);
       EditMessage (MainWindow *, ustring to, ustring from = "");
       EditMessage (MainWindow *, refptr<Message> _msg);
       ~EditMessage ();
 
+    protected:
+      void edit_when_ready ();
+
+    public:
       Gtk::Box * box_message;
 
       Gtk::ComboBox *from_combo, *reply_mode_combo;
@@ -41,6 +47,8 @@ namespace Astroid {
       Gtk::Revealer *fields_revealer;
       Gtk::Revealer *reply_revealer;
       Gtk::Revealer *encryption_revealer;
+
+      bool embed_editor = true;
 
       Editor * editor;
       bool editor_active = false;
@@ -80,6 +88,8 @@ namespace Astroid {
       void set_from (Address);
 
       bool check_fields ();
+      std::vector<ustring> attachment_words = { "attach" }; // defined in config
+
       bool send_message ();
       ComposeMessage * make_message ();
 
@@ -87,6 +97,7 @@ namespace Astroid {
       std::atomic<bool> sending_in_progress;
       void send_message_finished (bool result);
 
+      /* make a draft message that can be edited */
       void prepare_message ();
 
       /* draft */
@@ -108,8 +119,8 @@ namespace Astroid {
       int     id;          // id of this instance
       time_t  msg_time;
 
-      void editor_toggle (bool); // enable or disable editor or
-                                 // thread view
+      void editor_toggle (bool); // enable or disable editor or thread view
+
       void fields_show ();       // show fields
       void fields_hide ();       // hide fields
       void read_edited_message (); // load data from message after

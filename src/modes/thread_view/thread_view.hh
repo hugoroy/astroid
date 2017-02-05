@@ -66,13 +66,10 @@ namespace Astroid {
       double unread_delay = .5;
       std::chrono::time_point<std::chrono::steady_clock> focus_time;
       bool unread_check ();
+      bool unread_setup = false;
 
       /* resources */
-      bool    enable_mathjax;
-      ustring mathjax_uri_prefix;
-      std::vector<ustring> mathjax_only_tags;
       ustring home_uri;           // relative url for requests
-      bool    math_is_on = false; // for this thread
 
       bool    enable_code_prettify;
       std::vector<ustring> code_prettify_only_tags;
@@ -99,7 +96,7 @@ namespace Astroid {
       ThreadViewInspector thread_view_inspector;
 
       /* message manipulation and location */
-      void scroll_to_message (refptr<Message>, bool = false);
+      bool scroll_to_message (refptr<Message>, bool = false);
       bool scroll_to_element (ustring, bool = false);
 
       bool    in_scroll = false;
@@ -124,6 +121,10 @@ namespace Astroid {
       bool toggle_hidden (refptr<Message> = refptr<Message> (), ToggleState = ToggleToggle);
       bool is_hidden (refptr<Message>);
 
+      /* focused message */
+      refptr<Message> candidate_startup; // startup
+
+    public:
       /* message display state */
       struct MessageState {
         public:
@@ -169,10 +170,6 @@ namespace Astroid {
 
       std::map<refptr<Message>, MessageState> state;
 
-      /* focused message */
-      refptr<Message> candidate_startup; // startup
-
-    public:
       refptr<Message> focused_message;
 
       /* set the warning header of the message */

@@ -173,6 +173,7 @@ namespace Astroid {
             /* other windows, just close this one */
             quit ();
           } else {
+            LOG (debug) << "really quit?: " << id;
             ask_yes_no ("Really quit?", [&](bool yes){ if (yes) quit (); });
           }
           return true;
@@ -283,7 +284,7 @@ namespace Astroid {
           return true;
         });
 
-    keys.register_key ("C-f", "main_window.show_saved_searches",
+    keys.register_key ("M-s", "main_window.show_saved_searches",
         "Show saved searches",
         [&] (Key) {
           add_mode (new SavedSearches (this));
@@ -405,7 +406,6 @@ namespace Astroid {
 
   void MainWindow::disable_command () {
     // hides itself
-    command.disable_command ();
     command.remove_modal_grab();
     set_active (current);
     is_command = false;
@@ -418,12 +418,18 @@ namespace Astroid {
   }
 
   void MainWindow::quit () {
-    LOG (info) << "mw: quit.";
+    LOG (info) << "mw: quit: " << id;
     in_quit = true;
 
-    astroid->app->remove_window (*this);
-    remove_all_modes ();
-    close ();
+    /* focus out */
+    ungrab_active ();
+
+    /* remove all modes */
+    for (int n = notebook.get_n_pages(); n > 0; n--) {
+      close_page (true);
+    }
+
+    close (); // Gtk::Window::close ()
   }
 
   void MainWindow::on_yes () {
@@ -588,16 +594,6 @@ namespace Astroid {
     }
   }
 
-  void MainWindow::remove_all_modes () {
-    // used by Astroid::quit to deconstruct all modes before
-    // exiting.
-
-    for (int n = notebook.get_n_pages(); n > 0; n--) {
-      close_page (true);
-    }
-
-  }
-
   void MainWindow::close_page (Mode * m, bool force) {
     m->close (force);
   }
@@ -660,8 +656,8 @@ namespace Astroid {
   }
 
   bool MainWindow::on_my_focus_in_event (GdkEventFocus * /* event */) {
-    if (active) set_active (current);
-    //LOG (debug) << "mw: focus-in: " << id;
+    if (!in_quit && active) set_active (current);
+    LOG (debug) << "mw: focus-in: " << id << " active: " << active << ", in_quit: " << in_quit;
     return false;
   }
 

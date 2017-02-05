@@ -5,11 +5,12 @@ from subprocess import *
 def getGitDesc():
   return Popen('git describe --abbrev=8 --tags --always', stdout=PIPE, shell=True).stdout.read ().strip ()
 
-env = Environment ()
-
 AddOption ("--release", action="store", dest="release", default="git", help="Make a release (default: git describe output)")
 AddOption ("--enable-debug", action="store", dest="debug", default=None, help="Enable the -g flag for debugging (default: true when release is git)")
 AddOption ("--prefix", action="store", dest="prefix", default = '/usr/local', help="Directory to install astroid under")
+
+AddOption ("--profiler", action="store_true", dest="profile", default = False,
+    help = "Compile with profiling support (-pg)")
 
 AddOption ("--disable-libsass", action='store_true', dest='disable_libsass',
     default = False, help = "Disable libsass and the dependency on libsass, requires a scss compiler")
@@ -19,8 +20,18 @@ AddOption ('--scss-compiler', action='store', dest='scss_compiler',
 AddOption ("--disable-plugins", action = 'store_true', dest = 'disable_plugins',
     default = False, help = "Disable plugins")
 
+AddOption ("--propagate-environment", action = 'store_true', dest = 'propagate_environment',
+    default = False, help = "Propagate external environment variables to the build environment")
+
+envargs = {}
+if GetOption ("propagate_environment"):
+    envargs['ENV'] = os.environ
+
+env = Environment (**envargs)
+
 disable_libsass = GetOption ("disable_libsass")
 scss = GetOption ('scss_compiler')
+profile = GetOption ('profile')
 
 disable_plugins = GetOption ("disable_plugins")
 
@@ -252,6 +263,8 @@ else:
   if not conf.CheckPKG('gobject-introspection-1.0'):
     print 'gobject-introspection-1.0 not found.'
     Exit (1)
+  else:
+    env.ParseConfig ('pkg-config --libs --cflags gobject-introspection-1.0')
 
   if not conf.CheckPKG('libpeas-1.0'):
     print 'libpeas-1.0 not found.'
@@ -333,6 +346,11 @@ env.AppendUnique (CPPFLAGS = ['-Wall', '-std=c++11', '-pthread', '-DBOOST_LOG_DY
 
 if debug:
   env.AppendUnique (CPPFLAGS = ['-g', '-Wextra', '-DDEBUG'])
+
+if profile:
+  print ("profiling enabled.")
+  env.AppendUnique (CPPFLAGS = ['-pg'])
+  env.AppendUnique (LINKFLAGS = ['-pg'])
 
 env = conf.Finish ()
 

@@ -63,14 +63,15 @@ namespace Astroid {
           ~Attachment ();
           ustring name;
           bfs::path    fname;
-          bool    on_disk;
           bool    is_mime_message = false;
           bool    dispostion_inline = false;
           bool    valid;
 
           refptr<Glib::ByteArray> contents;
           std::string             content_type;
-          GMimeObject *           message = NULL;
+          refptr<Message>         message;
+
+          int     chunk_id = -1;
       };
 
       void add_attachment (std::shared_ptr<Attachment>);

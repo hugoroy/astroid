@@ -180,9 +180,12 @@ namespace Astroid {
     /* editor */
     default_config.put ("editor.cmd", "gvim -geom 10x10 --servername %2 --socketid %3 -f -c 'set ft=mail' '+set fileencoding=utf-8' '+set ff=unix' '+set enc=utf-8' %1");
     // also useful: '+/^\\s*\\n/' '+nohl'
-    //
+    default_config.put ("editor.external_editor", false); // should be true on Wayland
+
     default_config.put ("editor.charset", "utf-8");
     default_config.put ("editor.save_draft_on_force_quit", true);
+
+    default_config.put ("editor.attachment_words", "attach");
 
     /* mail composition */
     default_config.put ("mail.reply.quote_line", "Excerpts from %1's message of %2:"); // %1 = author, %2 = pretty_verbose_date
@@ -213,16 +216,6 @@ namespace Astroid {
     default_config.put ("thread_view.open_external_link", "xdg-open");
 
     default_config.put ("thread_view.indent_messages", false);
-
-    /* mathjax */
-    default_config.put ("thread_view.mathjax.enable", true);
-
-    // MathJax.js will be added to this uri when the script is loaded
-    default_config.put ("thread_view.mathjax.uri_prefix", "https://cdn.mathjax.org/mathjax/2.6-latest/");
-
-    // a comma-separated list of tags which mathjax is enabled for, if empty,
-    // allow for all messages.
-    default_config.put ("thread_view.mathjax.for_tags", "");
 
     /* code prettify */
     default_config.put ("thread_view.code_prettify.enable", true);

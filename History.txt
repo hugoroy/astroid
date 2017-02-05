@@ -1,11 +1,17 @@
 ==
 
+* scons --propagate-environment uses environment from build environment.
+
+== v0.7 / 2017-01-02
+
 * Messages are marked unread after a delay (default 2 sec) in
   thread-view. They can be manually toggled with 'N'.
 
-* Use Tab and S-Tab to jump between unread messages in thread-view.
+* Edit drafts using an external editor (optional).
 
-* Open element with 'Space', also in editor.
+* Filter thread-index incrementally using 'C-f'.
+
+* Use Tab and S-Tab to jump between unread messages in thread-view.
 
 * Yank raw or decoded message or element to primary clipboard with 'Y'
   or 'y', useful for applying patches.
@@ -26,16 +32,39 @@
 * 'c' in thread-view composes message to sender (or receiver if sender
     is you).
 
+* Taeer Bar-Yam <taeer@necsi.edu>: Allow any key name defined by GDK to
+  be entered.
+
+* Thread-view: '*' toggle 'flagged' on message, 'a' toggle inbox on
+  whole thread.
+
+* Removed MathJax support, since it is not widely used. Can be enabled
+  manually by adding sourcing the script in the thread-view theme file.
+
+* When replying, match encryption / signature level.
+
+* Open element with 'Space', also in editor.
+
+* Check for missing fields and for attachment words before sending.
+
+* Kim Ebert: Make sure all messages are loaded.
+
+* M. Dietrich, G. Hope: Fix buggy quoting of arbitrarily spaced '>'s.
+
+* Close thread-view after deleting draft.
+
+* Hugo Roy: Improve attachment, mime-message, and url display.
+
 == v0.6 / 2016-07-23
 
 * Use any editor (general XEmbed support in edit-message window): Emacs
   works.
 
 * Plugins: Python and Lua plugins can now be made, parts of ThreadIndex
-  and ThreadView are exposed allowing extesion of the user interface and
+  and ThreadView are exposed allowing extension of the user interface and
   advanced customization. Check out the plugins available at GitHub.
 
-* Crypto: GPG encryption and signing is added. Decryption and and
+* Crypto: GPG encryption and signing is added. Decryption and
   signature status is shown in greater detail.
 
 * Repository moved to github.com/astroidmail.

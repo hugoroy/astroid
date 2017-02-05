@@ -46,14 +46,6 @@ namespace Astroid {
     open_html_part_external = config.get<bool> ("open_html_part_external");
     open_external_link = config.get<string> ("open_external_link");
 
-    enable_mathjax = config.get<bool> ("mathjax.enable");
-    mathjax_uri_prefix = config.get<string> ("mathjax.uri_prefix");
-
-    ustring mj_only_tags = config.get<string> ("mathjax.for_tags");
-    if (mj_only_tags.length() > 0) {
-      mathjax_only_tags = VectorUtils::split_and_trim (mj_only_tags, ",");
-    }
-
     enable_code_prettify = config.get<bool> ("code_prettify.enable");
     enable_code_prettify_for_patches = config.get<bool> ("code_prettify.enable_for_patches");
 
@@ -253,10 +245,6 @@ namespace Astroid {
 
     if (enable_gravatar) {
       allowed_uris.push_back ("https://www.gravatar.com/avatar/");
-    }
-
-    if (enable_mathjax) {
-      allowed_uris.push_back (mathjax_uri_prefix);
     }
 
     if (enable_code_prettify) {
@@ -498,44 +486,6 @@ namespace Astroid {
           WebKitDOMHTMLHeadElement * head = webkit_dom_document_get_head (d);
           webkit_dom_node_append_child (WEBKIT_DOM_NODE(head), WEBKIT_DOM_NODE(e), (err = NULL, &err));
 
-          /* load mathjax if enabled */
-          if (enable_mathjax) {
-            bool only_tags_ok = false;
-            if (mathjax_only_tags.size () > 0) {
-              if (mthread->in_notmuch) {
-                for (auto &t : mathjax_only_tags) {
-                  if (mthread->thread->has_tag (t)) {
-                    only_tags_ok = true;
-                    break;
-                  }
-                }
-              } else {
-                /* enable for messages not in db */
-                only_tags_ok = true;
-              }
-            } else {
-              only_tags_ok = true;
-            }
-
-            if (only_tags_ok) {
-              math_is_on = true;
-
-              WebKitDOMElement * me = webkit_dom_document_create_element (d, "SCRIPT", (err = NULL, &err));
-
-              ustring mathjax_uri = mathjax_uri_prefix + "MathJax.js";
-
-              webkit_dom_element_set_attribute (me, "type", "text/javascript",
-                  (err = NULL, &err));
-              webkit_dom_element_set_attribute (me, "src", mathjax_uri.c_str(),
-                  (err = NULL, &err));
-
-              webkit_dom_node_append_child (WEBKIT_DOM_NODE(head), WEBKIT_DOM_NODE(me), (err = NULL, &err));
-
-
-              g_object_unref (me);
-            }
-          }
-
           /* load code_prettify if enabled */
           if (enable_code_prettify) {
             bool only_tags_ok = false;
@@ -768,14 +718,25 @@ namespace Astroid {
       }
     }
 
-    scroll_to_message (focused_message, true);
-
-    if (unread_delay > 0) {
-      Glib::signal_timeout ().connect (
-          sigc::mem_fun (this, &ThreadView::unread_check), std::max (80., (unread_delay * 1000.) / 2));
-    }
+    bool sc = scroll_to_message (focused_message, true);
 
     emit_ready ();
+
+    if (sc) {
+      if (!unread_setup) {
+        /* there's potentially a small chance that scroll_to_message gets an
+         * on_scroll_vadjustment_change emitted before we get here. probably not, since
+         * it is the same thread - but still.. */
+        unread_setup = true;
+
+        if (unread_delay > 0) {
+          Glib::signal_timeout ().connect (
+              sigc::mem_fun (this, &ThreadView::unread_check), std::max (80., (unread_delay * 1000.) / 2));
+        } else {
+          unread_check ();
+        }
+      }
+    }
   }
 
   void ThreadView::update_all_indent_states () {
@@ -2583,6 +2544,7 @@ namespace Astroid {
                   [&](bool yes) {
                     if (yes) {
                       EditMessage::delete_draft (focused_message);
+                      close ();
                     }
                   });
 
@@ -2746,6 +2708,32 @@ namespace Astroid {
             main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), "unread")));
             state[focused_message].unread_checked = true;
 
+          }
+
+          return true;
+        });
+
+    keys.register_key ("*",
+        "thread_view.flag",
+        "Toggle the 'flagged' tag on the message",
+        [&] (Key) {
+          if (!edit_mode && focused_message) {
+
+            main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), "flagged")));
+
+          }
+
+          return true;
+        });
+
+    keys.register_key ("a", "thread_index.archive_thread",
+        "Toggle 'inbox' tag on the whole thread",
+        [&] (Key) {
+
+          if (!edit_mode && focused_message) {
+            if (thread) {
+              main_window->actions->doit (refptr<Action>(new ToggleAction(thread, "inbox")));
+            }
           }
 
           return true;
@@ -2929,6 +2917,29 @@ namespace Astroid {
       } else if (a == ESave) {
         /* save message to */
         focused_message->save ();
+
+      } else if (a == EYankRaw) {
+        auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+        ustring t;
+
+        auto d = focused_message->raw_contents ();
+        if (d->size () == 0) {
+          t = "";
+        } else {
+          char * dd = (char*) d->get_data ();
+          t = dd;
+        }
+
+        cp->set_text (t);
+
+      } else if (a == EYank) {
+
+        auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+        ustring t;
+
+        t = focused_message->viewable_text (false, true);
+
+        cp->set_text (t);
       }
 
     } else {
@@ -3115,6 +3126,17 @@ namespace Astroid {
         if (scroll_to_element (scroll_arg, _scroll_when_visible)) {
           scroll_arg = "";
           _scroll_when_visible = false;
+
+          if (!unread_setup) {
+            unread_setup = true;
+
+            if (unread_delay > 0) {
+              Glib::signal_timeout ().connect (
+                  sigc::mem_fun (this, &ThreadView::unread_check), std::max (80., (unread_delay * 1000.) / 2));
+            }
+
+            // unread_delay == 0 is checked in update_focus_status ()
+          }
         }
       }
     }
@@ -3601,14 +3623,14 @@ namespace Astroid {
     return "message_" + focused_message->mid;
   }
 
-  void ThreadView::scroll_to_message (refptr<Message> m, bool scroll_when_visible) {
+  bool ThreadView::scroll_to_message (refptr<Message> m, bool scroll_when_visible) {
     focused_message = m;
 
-    if (edit_mode) return;
+    if (edit_mode) return false;
 
     if (!focused_message) {
       LOG (warn) << "tv: focusing: no message selected for focus.";
-      return;
+      return false;
     }
 
     LOG (debug) << "tv: focusing: " << m->date ();
@@ -3622,7 +3644,7 @@ namespace Astroid {
     g_object_unref (e);
     g_object_unref (d);
 
-    scroll_to_element (mid, scroll_when_visible);
+    return scroll_to_element (mid, scroll_when_visible);
   }
 
   bool ThreadView::scroll_to_element (

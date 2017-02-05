@@ -19,7 +19,9 @@
 # include "actions/onmessage.hh"
 # include "utils/address.hh"
 # include "utils/ustring_utils.hh"
-# include "plugin/manager.hh"
+# ifndef DISABLE_PLUGINS
+  # include "plugin/manager.hh"
+# endif
 
 using namespace std;
 namespace bfs = boost::filesystem;
@@ -91,6 +93,7 @@ namespace Astroid {
 
     /* attached signatures are handled in ::finalize */
     if (include_signature && account && !account->signature_attach) {
+      LOG (debug) << "cm: adding inline signature..";
       std::ifstream s (account->signature_file.c_str ());
       std::ostringstream sf;
       sf << s.rdbuf ();
@@ -109,7 +112,9 @@ namespace Astroid {
     g_mime_part_set_content_encoding (messagePart, GMIME_CONTENT_ENCODING_QUOTEDPRINTABLE);
     g_mime_part_set_content_object (messagePart, contentWrapper);
 
+    GMimeObject * part = g_mime_message_get_mime_part (message);
     g_mime_message_set_mime_part(message, GMIME_OBJECT(messagePart));
+    if (part) g_object_unref (part);
 
     g_object_unref(messagePart);
     g_object_unref(contentWrapper);
@@ -147,6 +152,7 @@ namespace Astroid {
 
   void ComposeMessage::finalize () {
     /* make message ready to be sent */
+    LOG (debug) << "cm: finalize..";
 
     /* again: ripped more or less from ner */
 
@@ -204,6 +210,8 @@ namespace Astroid {
       g_mime_multipart_add (multipart, (GMimeObject*) message->mime_part);
       g_mime_message_set_mime_part (message, (GMimeObject*) multipart);
 
+      /* not unreffing message->mime_part here since it is reused */
+
       for (shared_ptr<Attachment> &a : attachments)
       {
         if (!a->valid) {
@@ -217,7 +225,7 @@ namespace Astroid {
 
         if (a->is_mime_message) {
 
-          GMimeMessagePart * mp = g_mime_message_part_new_with_message ("rfc822", (GMimeMessage*) a->message);
+          GMimeMessagePart * mp = g_mime_message_part_new_with_message ("rfc822", (GMimeMessage*) a->message->message);
           g_mime_multipart_add (multipart, (GMimeObject *) mp);
 
           g_object_unref (mp);
@@ -226,16 +234,10 @@ namespace Astroid {
 
           GMimeStream * file_stream;
 
-          if (a->on_disk) {
 
-            file_stream = g_mime_stream_file_new (fopen(a->fname.c_str(), "r"));
+          file_stream = g_mime_stream_mem_new_with_byte_array (a->contents->gobj());
+          g_mime_stream_mem_set_owner (GMIME_STREAM_MEM (file_stream), false);
 
-          } else {
-
-            file_stream = g_mime_stream_mem_new_with_byte_array (a->contents->gobj());
-            g_mime_stream_mem_set_owner (GMIME_STREAM_MEM (file_stream), false);
-
-          }
 
           GMimeDataWrapper * data = g_mime_data_wrapper_new_with_stream (file_stream,
               GMIME_CONTENT_ENCODING_DEFAULT);
@@ -516,6 +518,8 @@ namespace Astroid {
   }
 
   void ComposeMessage::write (ustring fname) {
+    if (bfs::exists (fname.c_str ())) unlink (fname.c_str ());
+
     FILE * MessageFile = fopen(fname.c_str(), "w");
 
     GMimeStream * stream = g_mime_stream_file_new(MessageFile);
@@ -528,13 +532,11 @@ namespace Astroid {
   }
 
   ComposeMessage::Attachment::Attachment () {
-    on_disk = false;
   }
 
   ComposeMessage::Attachment::Attachment (bfs::path p) {
     LOG (debug) << "cm: at: construct from file.";
     fname   = p;
-    on_disk = true;
 
     std::string filename = fname.c_str ();
 
@@ -552,6 +554,7 @@ namespace Astroid {
       g_object_unref (file_info);
       return;
     }
+
     if (g_file_info_get_file_type(file_info) != G_FILE_TYPE_REGULAR)
     {
       LOG (error) << "cm: attached file is not a regular file.";
@@ -564,6 +567,35 @@ namespace Astroid {
     content_type = g_file_info_get_content_type (file_info);
     name = fname.filename().c_str();
     valid = true;
+
+    if (content_type == "message/rfc822") {
+      LOG (debug) << "cm: attachment is mime message.";
+      message = refptr<Message> (new Message(fname.c_str ()));
+
+      is_mime_message = true;
+
+      name = message->subject;
+
+    } else {
+      /* load into byte array */
+      refptr<Gio::File> fle = Glib::wrap (file, false);
+      refptr<Gio::FileInputStream> istr = fle->read ();
+
+      refptr<Glib::Bytes> b;
+      contents = Glib::ByteArray::create ();
+
+      do {
+        b = istr->read_bytes (4096, refptr<Gio::Cancellable>(NULL));
+
+        if (b) {
+          gsize s = b->get_size ();
+          if (s <= 0) break;
+          contents->append ((const guint8 *) b->get_data (s), s);
+        }
+
+      } while (b);
+    }
+
     g_object_unref (file);
     g_object_unref (file_info);
   }
@@ -571,36 +603,47 @@ namespace Astroid {
   ComposeMessage::Attachment::Attachment (refptr<Chunk> c) {
     LOG (debug) << "cm: at: construct from chunk.";
     name = c->get_filename ();
-    on_disk = false;
-
-    contents = c->contents ();
-
-    const char * ct = g_mime_content_type_to_string (c->content_type);
-    if (ct != NULL) {
-      content_type = std::string (ct);
-    } else {
-      content_type = "application/octet-stream";
-    }
-
     valid = true;
+
+    /* used by edit message when deleting attachment */
+    chunk_id = c->id;
+
+    if (c->mime_message) {
+      content_type = "message/rfc822";
+      is_mime_message = true;
+
+      message = refptr<Message> (new Message(GMIME_MESSAGE(c->mime_object)));
+
+      g_object_ref (c->mime_object); // should be cleaned by Message : Glib::Object
+
+      name = message->subject;
+
+    } else {
+
+      contents = c->contents ();
+
+      const char * ct = g_mime_content_type_to_string (c->content_type);
+      if (ct != NULL) {
+        content_type = std::string (ct);
+      } else {
+        content_type = "application/octet-stream";
+      }
+    }
   }
 
   ComposeMessage::Attachment::Attachment (refptr<Message> msg) {
     LOG (debug) << "cm: at: construct from message.";
     name = msg->subject;
-    on_disk = false;
     is_mime_message = true;
 
     content_type = "message/rfc822";
-    message = (GMimeObject*) msg->message;
-    g_object_ref (message);
+    message = msg;
 
     valid = true;
   }
 
   ComposeMessage::Attachment::~Attachment () {
     LOG (debug) << "cm: at: deconstruct";
-    if (message) g_object_unref (message);
   }
 
 }

@@ -3,7 +3,7 @@
 # include <gtkmm.h>
 
 namespace Astroid {
-  class Editor : public Gtk::Bin {
+  class Editor {
     public:
 
       virtual bool ready () = 0;
@@ -14,7 +14,7 @@ namespace Astroid {
 
       virtual void focus () = 0;
 
-      bool start_editor_when_ready = true;
+      bool start_editor_when_ready = false;
 
   };
 }

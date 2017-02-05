@@ -9,26 +9,17 @@ Check out the [tour of how to install, configure and use astroid](https://github
 ## main features and goals include:
 * lightweight and fast!
 * fully operatable by [keyboard](https://github.com/astroidmail/astroid/wiki/Customizing-key-bindings).
-* graphical interface, inspired by sup. but allow buffers to be separeted and placed in several windows.
+* graphical interface, inspired by sup. but allow buffers to be separated and placed in several windows.
 * display html mail and some attachments inline.
-* render math using MathJax.
 * syntax highlighting of code (markdown style) and patches.
 * [themable and configurable](https://github.com/astroidmail/astroid/wiki/Customizing-the-user-interface).
 * built-in [crypto (PGP/MIME) support](https://github.com/astroidmail/astroid/wiki/Signing%2C-Encrypting-and-Decrypting).
-* editors: [embed vim or emacs](https://github.com/astroidmail/astroid/wiki/Customizing-editor) (or anything else that supports XEmbed).
+* editors: [embedded or external vim or emacs](https://github.com/astroidmail/astroid/wiki/Customizing-editor) (or your favourite editor, embedded: must support XEmbed).
 * [python and lua plugins](https://github.com/astroidmail/astroid/wiki/Plugins).
 * and much more...
 
-### more screenshots
-  <a href="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-thread-view.png">
-    <img src="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-thread-view.png" width="49%">
-  </a> <a href="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-searching.png">
-    <img src="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-searching.png" width="49%" style="float: right;">
-  </a>
-  <a href="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-editor-vim.png">
-    <img src="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-editor-vim.png" width="49%">
-  </a> <a href="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-compose-code-highlight.png">
-    <img src="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/astroid-compose-code-highlight.png" width="49%" style="float: right;">
+  <a href="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/full-demo-external.png">
+    <img alt="Astroid (with external editor)" src="https://raw.githubusercontent.com/astroidmail/astroid/master/doc/full-demo-external.png">
   </a>
 
 ## acquiring astroid

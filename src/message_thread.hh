@@ -69,10 +69,16 @@ namespace Astroid {
 
       std::vector<refptr<Chunk>> mime_messages ();
 
+      /* used by editmessage, returns the same as attachments () and mime_messages (),
+       * but in the correct order. */
+      std::vector<refptr<Chunk>> mime_messages_and_attachments ();
+
       refptr<Glib::ByteArray> contents ();
       refptr<Glib::ByteArray> raw_contents ();
 
       bool is_patch ();
+      bool is_encrypted ();
+      bool is_signed ();
 
       void save ();
       void save_to (ustring);
