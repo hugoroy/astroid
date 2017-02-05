@@ -344,6 +344,7 @@ hr {
     text-overflow: ellipsis;
     overflow: hidden;
     margin-left: 48px;
+    display: none !important;
 }
 
 .email_container .header_container .subject {
@@ -354,6 +355,7 @@ hr {
     text-overflow: ellipsis;
     overflow: hidden;
     margin-left: 48px;
+    display: none !important;
 }
 
 .focused {
