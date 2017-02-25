@@ -96,6 +96,7 @@ namespace Astroid {
       ComposeMessage * sending_message;
       std::atomic<bool> sending_in_progress;
       void send_message_finished (bool result);
+      void update_send_message_status (bool warn, ustring msg);
 
       /* make a draft message that can be edited */
       void prepare_message ();
@@ -126,8 +127,11 @@ namespace Astroid {
       void read_edited_message (); // load data from message after
                                    // it has been edited.
       void on_tv_ready ();
-      ustring warning_str;
-      ustring info_str;
+      void set_warning (ustring);
+      void set_info (ustring);
+
+      ustring warning_str = "";
+      ustring info_str = "";
 
       AccountManager * accounts;
 

@@ -78,7 +78,8 @@ namespace Astroid {
   }
 
   Message::~Message () {
-    //g_object_unref (message);
+    LOG (debug) << "ms: deconstruct";
+    if (message) g_object_unref (message);
   }
 
   void Message::on_message_updated (Db * db, ustring _mid) {
@@ -191,6 +192,7 @@ namespace Astroid {
 
       load_message (_message);
 
+      g_object_unref (_message); // is reffed in load_message
       g_object_unref (stream); // reffed from parser
       g_object_unref (parser); // reffed from message
     }
@@ -245,6 +247,7 @@ namespace Astroid {
      */
 
     message = _msg;
+    g_object_ref (message);
     const char *c;
 
     if (mid == "") {
@@ -282,9 +285,6 @@ namespace Astroid {
     g_mime_message_get_date (message, &received_time, NULL);
 
     root = refptr<Chunk>(new Chunk (g_mime_message_get_mime_part (message)));
-
-    g_object_ref (message);  // TODO: a little bit at loss here -> change to
-                             //       std::something.
   }
 
   ustring Message::viewable_text (bool html, bool fallback_html) {
@@ -438,6 +438,10 @@ namespace Astroid {
     } else {
       return ustring (g_mime_message_get_date_as_string (message));
     }
+  }
+
+  ustring Message::date_asctime () {
+    return Date::asctime (received_time);
   }
 
   ustring Message::pretty_date () {
@@ -635,6 +639,7 @@ namespace Astroid {
     dialog.add_button ("_Cancel", Gtk::RESPONSE_CANCEL);
     dialog.add_button ("_Select", Gtk::RESPONSE_OK);
     dialog.set_do_overwrite_confirmation (true);
+    dialog.set_current_folder (astroid->runtime_paths ().save_dir.c_str ());
 
     ustring _f = get_filename ();
 
@@ -648,6 +653,8 @@ namespace Astroid {
           string fname = dialog.get_filename ();
 
           save_to (fname);
+
+          astroid->runtime_paths ().save_dir = bfs::path (dialog.get_current_folder ());
 
           break;
         }
@@ -777,6 +784,10 @@ namespace Astroid {
 
   }
 
+  MessageThread::~MessageThread () {
+    LOG (debug) << "mt: destruct.";
+  }
+
   void MessageThread::load_messages (Db * db) {
     /* update values */
     subject     = thread->subject;
@@ -882,10 +893,6 @@ namespace Astroid {
     if (subject == "") {
       subject = (*(--messages.end()))->subject;
     }
-  }
-
-
-  void MessageThread::reload_messages () {
   }
 
 }

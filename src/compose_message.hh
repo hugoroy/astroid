@@ -6,6 +6,9 @@
 # include <functional>
 # include <memory>
 # include <boost/filesystem.hpp>
+# include <thread>
+# include <mutex>
+# include <condition_variable>
 
 # include <gmime/gmime.h>
 
@@ -97,6 +100,7 @@ namespace Astroid {
       bool      dryrun;
 
       /* sendmail process */
+      bool cancel_send_during_delay = false;
       int pid;
       int stdin;
       int stdout;
@@ -106,6 +110,10 @@ namespace Astroid {
 
       bool log_out (Glib::IOCondition);
       bool log_err (Glib::IOCondition);
+
+      std::thread send_thread;
+      std::mutex  send_cancel_m;
+      std::condition_variable  send_cancel_cv;
 
     public:
       /* message sent */
@@ -118,7 +126,20 @@ namespace Astroid {
       void message_sent_event ();
       Glib::Dispatcher d_message_sent;
 
+      /* message send status update */
+      typedef sigc::signal <void, bool, ustring> type_message_send_status;
+      type_message_send_status message_send_status ();
+
+      void emit_message_send_status (bool, ustring);
+
+      bool    message_send_status_warn = false;
+      ustring message_send_status_msg = "";
+
+      void message_send_status_event ();
+      Glib::Dispatcher d_message_send_status;
+
     protected:
       type_message_sent m_message_sent;
+      type_message_send_status m_message_send_status;
   };
 }

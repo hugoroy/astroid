@@ -36,6 +36,8 @@ namespace Astroid {
       viewable   = true;
       attachment = false;
 
+    } else {
+      g_object_ref (mime_object);
     }
 
     content_type = g_mime_object_get_content_type (mime_object);
@@ -647,6 +649,7 @@ namespace Astroid {
 
     dialog.set_do_overwrite_confirmation (true);
     dialog.set_current_name (Utils::safe_fname (get_filename ()));
+    dialog.set_current_folder (astroid->runtime_paths ().save_dir.c_str ());
 
     int result = dialog.run ();
 
@@ -658,6 +661,8 @@ namespace Astroid {
 
           /* the dialog asks whether to overwrite or not */
           save_to (fname, true);
+
+          astroid->runtime_paths ().save_dir = bfs::path (dialog.get_current_folder ());
 
           break;
         }
@@ -683,7 +688,7 @@ namespace Astroid {
   Chunk::~Chunk () {
     LOG (debug) << "chunk: deconstruct.";
     // these should not be unreffed.
-    // g_object_unref (mime_object);
+    if (mime_object) g_object_unref (mime_object);
     // g_object_unref (content_type);
   }
 }

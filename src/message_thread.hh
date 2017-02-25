@@ -38,7 +38,7 @@ namespace Astroid {
       void on_message_updated (Db *, ustring);
       void refresh (Db *);
 
-      GMimeMessage * message;
+      GMimeMessage * message = NULL;
       refptr<Chunk>     root;
       int level = 0;
 
@@ -59,6 +59,7 @@ namespace Astroid {
 
       time_t  received_time;
       ustring date ();
+      ustring date_asctime ();
       ustring pretty_date ();
       ustring pretty_verbose_date (bool = false);
       std::vector<ustring> tags;
@@ -69,8 +70,8 @@ namespace Astroid {
 
       std::vector<refptr<Chunk>> mime_messages ();
 
-      /* used by editmessage, returns the same as attachments () and mime_messages (),
-       * but in the correct order. */
+      /* used by editmessage, returns the same as attachments () and
+       * mime_messages (), but in the correct order. */
       std::vector<refptr<Chunk>> mime_messages_and_attachments ();
 
       refptr<Glib::ByteArray> contents ();
@@ -107,6 +108,7 @@ namespace Astroid {
     public:
       MessageThread ();
       MessageThread (refptr<NotmuchThread>);
+      ~MessageThread ();
 
       bool in_notmuch;
       refptr<NotmuchThread> thread;
@@ -116,7 +118,6 @@ namespace Astroid {
       void load_messages (Db *);
       void add_message (ustring);
       void add_message (refptr<Chunk>);
-      void reload_messages ();
   };
 }
 
