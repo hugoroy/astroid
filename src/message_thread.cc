@@ -59,13 +59,30 @@ namespace Astroid {
     has_file   = true;
     level      = _level;
 
+    nmmsg = refptr<NotmuchMessage> (new NotmuchMessage (message));
+
     LOG (info) << "msg: loading mid: " << mid;
 
-    fname = notmuch_message_get_filename (message);
+    fname = nmmsg->filename;
     LOG (info) << "msg: filename: " << fname;
 
     load_message_from_file (fname);
-    load_tags (message);
+    tags = nmmsg->tags;
+  }
+
+  Message::Message (refptr<NotmuchMessage> _msg) : Message () {
+    in_notmuch = true;
+    nmmsg = _msg;
+    mid = nmmsg->mid;
+    tid = nmmsg->thread_id;
+    fname = nmmsg->filename;
+    has_file = true;
+
+    LOG (info) << "msg: loading mid: " << mid;
+    LOG (info) << "msg: filename: " << fname;
+
+    load_message_from_file (fname);
+    tags = nmmsg->tags;
   }
 
   Message::Message (GMimeMessage * _msg) {
@@ -94,15 +111,16 @@ namespace Astroid {
     db->on_message (mid, [&](notmuch_message_t * msg)
       {
         if (msg != NULL) {
-          const char * fn = notmuch_message_get_filename (msg);
-          if (fn != NULL) {
-            fname = ustring (fn);
+          in_notmuch = true;
+          if (nmmsg) {
+            nmmsg->refresh (msg);
           } else {
-            fname = "";
-            has_file = false;
+            nmmsg = refptr<NotmuchMessage> (new NotmuchMessage (msg));
           }
 
-          load_tags (msg);
+          fname = nmmsg->filename;
+          tags  = nmmsg->tags;
+
         } else {
           fname = "";
           has_file = false;
@@ -125,41 +143,8 @@ namespace Astroid {
     m_signal_message_changed.emit (db, this, me);
   }
 
-  void Message::load_tags (Db * db) {
-    if (!in_notmuch) {
-      LOG (error) << "mt: error: message not in database.";
-      throw invalid_argument ("mt: load_tags on message not in database.");
-    }
-
-    if (mid == "") {
-      LOG (error) << "mt: error: mid not defined, no tags";
-      throw invalid_argument ("mt: load_tags on message without message id.");
-    } else {
-      /* get tags from nm db */
-
-      db->on_message (mid, [&](notmuch_message_t * msg)
-        {
-          load_tags (msg);
-        });
-    }
-  }
-
-  void Message::load_tags (notmuch_message_t * msg) {
-
-    tags.clear ();
-
-    notmuch_tags_t * ntags;
-    for (ntags = notmuch_message_get_tags (msg);
-         notmuch_tags_valid (ntags);
-         notmuch_tags_move_to_next (ntags)) {
-
-      ustring t = ustring(notmuch_tags_get (ntags));
-      tags.push_back (t);
-    }
-
-  }
-
-  void Message::load_message_from_file (ustring fname) {
+  void Message::load_message_from_file (ustring _fname) {
+    fname = _fname;
     if (!exists (fname.c_str())) {
       LOG (error) << "failed to open file: " << fname << ", it does not exist!";
 
@@ -225,8 +210,7 @@ namespace Astroid {
         if (c != NULL) reply_to = ustring (c);
         else reply_to = "";
 
-
-        received_time = notmuch_message_get_date (msg);
+        time = notmuch_message_get_date (msg);
 
       });
   }
@@ -282,7 +266,7 @@ namespace Astroid {
     if (c != NULL) reply_to = ustring (c);
     else reply_to = "";
 
-    g_mime_message_get_date (message, &received_time, NULL);
+    g_mime_message_get_date (message, &time, NULL);
 
     root = refptr<Chunk>(new Chunk (g_mime_message_get_mime_part (message)));
   }
@@ -441,15 +425,15 @@ namespace Astroid {
   }
 
   ustring Message::date_asctime () {
-    return Date::asctime (received_time);
+    return Date::asctime (time);
   }
 
   ustring Message::pretty_date () {
-    return Date::pretty_print (received_time);
+    return Date::pretty_print (time);
   }
 
   ustring Message::pretty_verbose_date (bool include_short) {
-    return Date::pretty_print_verbose (received_time, include_short);
+    return Date::pretty_print_verbose (time, include_short);
   }
 
   InternetAddressList * Message::to () {
@@ -583,6 +567,34 @@ namespace Astroid {
     }
 
     return ret;
+  }
+
+  AddressList Message::list_post () {
+    if (missing_content) {
+      return AddressList ();
+    } else {
+      const char * c = g_mime_object_get_header (GMIME_OBJECT(message), "List-Post");
+      if (c == NULL) return AddressList ();
+
+      ustring _list = ustring (c);
+      auto list = VectorUtils::split_and_trim (_list, " ");
+
+      AddressList al;
+      for (auto &a : list) {
+        while (*a.begin () == '<') a.erase (a.begin());
+        while (*(--a.end()) == '>') a.erase (--a.end ());
+
+        ustring scheme = Glib::uri_parse_scheme (a);
+        if (scheme == "mailto") {
+
+          a = a.substr (scheme.length ()+1, a.length () - scheme.length()-1);
+          UstringUtils::trim (a);
+          al += Address(a);
+        }
+      }
+
+      return al;
+    }
   }
 
   AddressList Message::all_to_from () {
@@ -753,6 +765,15 @@ namespace Astroid {
          Glib::Regex::match_simple ("\\[PATCH.*\\]", subject));
   }
 
+  bool Message::is_different_subject () {
+    return subject_is_different;
+  }
+
+  bool Message::is_list_post () {
+    const char * c = g_mime_object_get_header (GMIME_OBJECT(message), "List-Post");
+    return (c != NULL);
+  }
+
   bool Message::is_encrypted () {
     return has (tags, ustring("encrypted"));
   }
@@ -788,9 +809,36 @@ namespace Astroid {
     LOG (debug) << "mt: destruct.";
   }
 
+  ustring MessageThread::get_subject () {
+    return subject;
+  }
+
+  void MessageThread::set_first_subject (ustring s) {
+    first_subject = s;
+    first_subject = UstringUtils::replace (first_subject, "Re:", "");
+    UstringUtils::trim (first_subject);
+
+    first_subject_set = true;
+
+    if (messages.size () == 1) {
+      messages[0]->subject_is_different = true;
+    }
+
+    for (auto &m : messages) {
+      m->subject_is_different = subject_is_different (m->subject);
+    }
+  }
+
+  bool MessageThread::subject_is_different (ustring s) {
+    s = UstringUtils::replace (s, "Re:", "");
+    UstringUtils::trim (s);
+    return !(s == first_subject);
+  }
+
   void MessageThread::load_messages (Db * db) {
     /* update values */
-    subject     = thread->subject;
+    subject = thread->subject;
+    set_first_subject (thread->subject);
     /*
     newest_date = notmuch_thread_get_newest_date (nm_thread);
     unread      = check_unread (nm_thread);
@@ -819,7 +867,13 @@ namespace Astroid {
 
 
               reply = notmuch_messages_get (replies);
-              messages.push_back (refptr<Message> (new Message (reply, lvl)));
+              auto m = refptr<Message>(new Message (reply, lvl));
+
+              if (!first_subject_set) set_first_subject(m->subject);
+
+              m->subject_is_different = subject_is_different (m->subject);
+              messages.push_back (m);
+
 
               add_replies (reply, lvl + 1);
 
@@ -833,7 +887,12 @@ namespace Astroid {
 
           message = notmuch_messages_get (qmessages);
 
-          messages.push_back (refptr<Message>(new Message (message, level)));
+          auto m = refptr<Message>(new Message (message, level));
+
+          if (!first_subject_set) set_first_subject(m->subject);
+
+          m->subject_is_different = subject_is_different (m->subject);
+          messages.push_back (m);
 
           add_replies (message, level + 1);
 
@@ -869,7 +928,12 @@ namespace Astroid {
             if ( ! found )
             {
               LOG (error) << "mid: " << mid << " was missing!";
-              messages.push_back (refptr<Message>(new Message (message, 0)));
+              auto m = refptr<Message>(new Message (message, 0));
+
+              if (!first_subject_set) set_first_subject(m->subject);
+
+              m->subject_is_different = subject_is_different (m->subject);
+              messages.push_back (m);
             }
           }
 
@@ -879,7 +943,10 @@ namespace Astroid {
   }
 
   void MessageThread::add_message (ustring fname) {
-    messages.push_back (refptr<Message>(new Message (fname)));
+    auto m = refptr<Message>(new Message (fname));
+    if (!first_subject_set) set_first_subject(m->subject);
+    m->subject_is_different = subject_is_different (m->subject);
+    messages.push_back (m);
   }
 
   void MessageThread::add_message (refptr<Chunk> c) {
@@ -891,7 +958,7 @@ namespace Astroid {
     messages.push_back (c->get_mime_message ());
 
     if (subject == "") {
-      subject = (*(--messages.end()))->subject;
+      set_first_subject ((*(--messages.end()))->subject);
     }
   }
 

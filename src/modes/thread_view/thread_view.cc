@@ -566,7 +566,7 @@ namespace Astroid {
     mthread.clear ();
     mthread = _mthread;
 
-    ustring s = mthread->subject;
+    ustring s = mthread->get_subject();
 
     set_label (s);
 
@@ -712,7 +712,7 @@ namespace Astroid {
             mthread->messages.end (),
             [](refptr<Message> &a, refptr<Message> &b)
               {
-                return ( a->received_time < b->received_time );
+                return ( a->time < b->time );
               });
 
         toggle_hidden (focused_message, ToggleShow);
@@ -809,6 +809,28 @@ namespace Astroid {
 
     /* marked */
     load_marked_icon (m, div_message);
+
+    /* patches may be rendered somewhat differently */
+    if (m->is_patch ()) {
+      WebKitDOMDOMTokenList * class_list =
+        webkit_dom_element_get_class_list (WEBKIT_DOM_ELEMENT(div_message));
+
+      webkit_dom_dom_token_list_add (class_list, "patch",
+          (err = NULL, &err));
+
+      g_object_unref (class_list);
+    }
+
+    /* message subject deviates from thread subject */
+    if (m->is_different_subject ()) {
+      WebKitDOMDOMTokenList * class_list =
+        webkit_dom_element_get_class_list (WEBKIT_DOM_ELEMENT(div_message));
+
+      webkit_dom_dom_token_list_add (class_list, "different_subject",
+          (err = NULL, &err));
+
+      g_object_unref (class_list);
+    }
 
     if (!edit_mode) {
       /* optionally hide / collapse the message */
@@ -2483,6 +2505,30 @@ namespace Astroid {
           return false;
         });
 
+    keys.register_key ("R", "thread_view.reply_sender",
+        "Reply to sender of current message",
+        [&] (Key) {
+          /* reply to currently focused message */
+          if (!edit_mode) {
+            main_window->add_mode (new ReplyMessage (main_window, focused_message, ReplyMessage::ReplyMode::Rep_Sender));
+
+            return true;
+          }
+          return false;
+        });
+
+    keys.register_key ("M", "thread_view.reply_mailinglist",
+        "Reply to mailinglist of current message",
+        [&] (Key) {
+          /* reply to currently focused message */
+          if (!edit_mode) {
+            main_window->add_mode (new ReplyMessage (main_window, focused_message, ReplyMessage::ReplyMode::Rep_MailingList));
+
+            return true;
+          }
+          return false;
+        });
+
     keys.register_key ("f", "thread_view.forward",
         "Forward current message",
         [&] (Key) {
@@ -2803,7 +2849,7 @@ namespace Astroid {
         [&] (Key) {
           if (!edit_mode && focused_message) {
 
-            main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), "unread")));
+            main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchItem>(new NotmuchMessage(focused_message)), "unread")));
             state[focused_message].unread_checked = true;
 
           }
@@ -2817,7 +2863,7 @@ namespace Astroid {
         [&] (Key) {
           if (!edit_mode && focused_message) {
 
-            main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), "flagged")));
+            main_window->actions->doit (refptr<Action>(new ToggleAction (refptr<NotmuchItem>(new NotmuchMessage(focused_message)), "flagged")));
 
           }
 
@@ -2930,7 +2976,7 @@ namespace Astroid {
                     rem.size () == 0) {
                   LOG (debug) << "ti: nothing to do.";
                 } else {
-                  main_window->actions->doit (refptr<Action>(new TagAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), add, rem)));
+                  main_window->actions->doit (refptr<Action>(new TagAction (refptr<NotmuchItem>(new NotmuchMessage(focused_message)), add, rem)));
                 }
 
                 /* make sure that the unread tag is not modified after manually editing tags */
@@ -3502,7 +3548,7 @@ namespace Astroid {
         if (unread_delay == 0.0 || elapsed.count () > unread_delay) {
           if (has (focused_message->tags, ustring("unread"))) {
 
-            main_window->actions->doit (refptr<Action>(new TagAction (refptr<NotmuchTaggable>(new NotmuchMessage(focused_message)), {}, { "unread" })), false);
+            main_window->actions->doit (refptr<Action>(new TagAction (refptr<NotmuchItem>(new NotmuchMessage(focused_message)), {}, { "unread" })), false);
             state[focused_message].unread_checked = true;
           }
         }

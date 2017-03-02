@@ -39,12 +39,12 @@ namespace Astroid {
   EditMessage::EditMessage (MainWindow * mw, ustring _to, ustring _from) :
     EditMessage (mw, false) { // {{{
 
+    in_read = false;
     to = _to;
 
     if (!_from.empty ()) {
       set_from (Address (_from));
     }
-
 
     /* reload message */
     prepare_message ();
@@ -91,6 +91,7 @@ namespace Astroid {
 
   EditMessage::EditMessage (MainWindow * mw, bool _edit_when_ready) : Mode (mw) {
     editor_config = astroid->config ("editor");
+    in_read = false;
 
     embed_editor = !editor_config.get<bool> ("external_editor");
     save_draft_on_force_quit = editor_config.get <bool> ("save_draft_on_force_quit");
@@ -200,7 +201,6 @@ namespace Astroid {
       editor = new External (this);
     }
 
-
     thread_view = Gtk::manage(new ThreadView(main_window));
     thread_view->edit_mode = true;
     //thread_rev->add (*thread_view);
@@ -288,7 +288,7 @@ namespace Astroid {
         [&] (Key) {
           if (!message_sent && !sending_in_progress.load()) {
             if (editor->started ()) {
-              thread_view->set_warning (thread_view->focused_message, "Cannot send message when editing.");
+              set_warning ("Cannot send message when editing.");
 
               return true;
             }
@@ -337,7 +337,7 @@ namespace Astroid {
         [&] (Key) {
 
           if (editor->started ()) {
-            thread_view->set_warning (thread_view->focused_message, "Cannot change from address when editing.");
+            set_warning ("Cannot change from address when editing.");
 
             return true;
           }
@@ -368,7 +368,7 @@ namespace Astroid {
         [&] (Key) {
 
           if (editor->started ()) {
-            thread_view->set_warning (thread_view->focused_message, "Cannot save draft when editing.");
+            set_warning ("Cannot save draft when editing.");
 
             return true;
           }
@@ -497,7 +497,7 @@ namespace Astroid {
     } else if (!force && !message_sent && !draft_saved) {
 
       if (editor->started ()) {
-        thread_view->set_warning (thread_view->focused_message, "Cannot close when editing.");
+        set_warning ("Cannot close when editing.");
 
         return;
       }
@@ -606,12 +606,23 @@ namespace Astroid {
 
   /* edit / read message cycling {{{ */
   void EditMessage::on_from_combo_changed () {
-    prepare_message ();
-    read_edited_message ();
+    /* this will be called when the From: field has been changed
+     * manually in the e-mail as well. this check prevents the
+     * message currently being read from the edited draft to be
+     * overwritten before it is read. */
+    if (!in_read) {
+      prepare_message ();
+      read_edited_message ();
+    }
   }
 
   void EditMessage::prepare_message () {
     LOG (debug) << "em: preparing message from fields..";
+
+    if (in_read) {
+      LOG (error) << "em: preparing message while in read";
+      throw std::logic_error ("em: preparing message while in read");
+    }
 
     auto iter = from_combo->get_active ();
     if (!iter) {
@@ -639,15 +650,15 @@ namespace Astroid {
     LOG (debug) << "em: prepare message done.";
   }
 
-  void EditMessage::set_from (Address a) {
+  bool EditMessage::set_from (Address a) {
     if (!accounts->is_me (a)) {
       LOG (error) << "em: from address is not a defined account.";
     }
 
-    set_from (accounts->get_account_for_address (a));
+    return set_from (accounts->get_account_for_address (a));
   }
 
-  void EditMessage::set_from (Account * a) {
+  bool EditMessage::set_from (Account * a) {
     int rn = from_combo->get_active_row_number ();
 
     account_no = 0;
@@ -664,6 +675,8 @@ namespace Astroid {
     if (!same_account) {
       reset_signature ();
     }
+
+    return same_account;
   }
 
   void EditMessage::reset_signature () {
@@ -682,15 +695,25 @@ namespace Astroid {
     switch_sign->set_state (a->has_gpg && a->always_gpg_sign);
   }
 
-
   void EditMessage::switch_signature_set () {
     LOG (debug) << "got sig: " << switch_signature->get_active ();
-    prepare_message ();
-    read_edited_message ();
+    if (!in_read) {
+      prepare_message ();
+      read_edited_message ();
+    }
   }
 
   void EditMessage::read_edited_message () {
-    /* make message */
+    LOG (debug) << "em: reading edited message..";
+    std::lock_guard<std::mutex> lk (message_draft_m);
+
+    if (in_read) {
+      LOG (error) << "em: read while already reading!";
+      throw std::logic_error ("read while already reading");
+    }
+
+    in_read = true;
+
     draft_saved = false; // we expect changes to have been made
     set_warning ("");
 
@@ -702,21 +725,20 @@ namespace Astroid {
       }
     }
 
-    ComposeMessage * c = make_message ();
+    /* make message */
+    ComposeMessage * c = setup_message ();
 
-    if (c == NULL) {
-      LOG (error) << "err: could not make message.";
-      return;
-    }
+    /* set account selector to from address email */
+    set_from (c->account);
+
+    /* build message */
+    finalize_message (c);
 
     if (c->encrypt || c->sign) {
       if (!c->encryption_success) {
         set_warning ("Failed encrypting: " + UstringUtils::replace (c->encryption_error, "\n", "<br />"));
       }
     }
-
-    /* set account selector to from address email */
-    set_from (c->account);
 
     to = c->to;
     cc = c->cc;
@@ -735,6 +757,8 @@ namespace Astroid {
     delete c;
 
     unlink (tmpf.c_str());
+
+    in_read = false;
   }
 
   /* }}} */
@@ -811,9 +835,6 @@ namespace Astroid {
         editor->start ();
 
       } else {
-
-        editor_active = false;
-
         if (editor->started ()) {
           editor->stop ();
         }
@@ -835,7 +856,10 @@ namespace Astroid {
 
         fields_show ();
 
-        read_edited_message ();
+        if (editor_active)
+          read_edited_message ();
+
+        editor_active = false;
 
         grab_modal ();
         thread_view->grab_focus ();
@@ -847,19 +871,21 @@ namespace Astroid {
         editor_active = true;
 
         prepare_message ();
+        read_edited_message ();
 
         editor->start ();
 
-        read_edited_message ();
         info_str = "Editing..";
 
       } else {
         /* return from editor */
-        editor_active = false;
-
         set_info ("");
-        read_edited_message ();
 
+        if (editor_active) {
+          read_edited_message ();
+        }
+
+        editor_active = false;
       }
     }
   }
@@ -1051,8 +1077,7 @@ namespace Astroid {
     fields_hide ();
   }
 
-  ComposeMessage * EditMessage::make_message () {
-
+  ComposeMessage * EditMessage::setup_message () {
     ComposeMessage * c = new ComposeMessage ();
 
     c->load_message (msg_id, tmpfile_path.c_str());
@@ -1064,6 +1089,12 @@ namespace Astroid {
       c->add_attachment (a);
     }
 
+    return c;
+  }
+
+  void EditMessage::finalize_message (ComposeMessage * c) {
+    /* these options are not known before setup_message is done, and the
+     * new account information has been applied to the editor */
     if (c->account->has_signature && switch_signature->get_active ()) {
       c->include_signature = true;
     } else {
@@ -1077,6 +1108,11 @@ namespace Astroid {
 
     c->build ();
     c->finalize ();
+  }
+
+  ComposeMessage * EditMessage::make_message () {
+    ComposeMessage * c = setup_message ();
+    finalize_message (c);
 
     return c;
   }
