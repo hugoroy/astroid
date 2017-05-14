@@ -152,8 +152,8 @@ namespace Astroid {
       missing_content = true;
 
       if (in_notmuch) {
-        LOG (warn) << "loading cache for missing file from notmuch";
 
+        LOG (warn) << "loading cache for missing file from notmuch";
         load_notmuch_cache ();
 
       } else {
@@ -162,19 +162,30 @@ namespace Astroid {
         string error_s = "failed to open file: " + fname;
         throw message_error (error_s.c_str());
       }
+      return;
 
     } else {
       GMimeStream   * stream  = g_mime_stream_file_new_for_path (fname.c_str(), "r");
+      g_mime_stream_file_set_owner (GMIME_STREAM_FILE(stream), TRUE);
       if (stream == NULL) {
         LOG (error) << "failed to open file: " << fname << " (unspecified error)";
-        string error_s = "failed to open file: " + fname;
-        throw message_error (error_s.c_str());
+
+        has_file = false;
+        missing_content = true;
+
+        if (in_notmuch) {
+          LOG (warn) << "loading cache for missing file from notmuch";
+          load_notmuch_cache ();
+        } else {
+          LOG (error) << "tried to open disk file, but failed, message is not in database either.";
+          string error_s = "failed to open file: " + fname;
+          throw message_error (error_s.c_str());
+        }
+        return;
       }
 
       GMimeParser   * parser  = g_mime_parser_new_with_stream (stream);
-
       GMimeMessage * _message = g_mime_parser_construct_message (parser);
-
       load_message (_message);
 
       g_object_unref (_message); // is reffed in load_message
@@ -775,11 +786,16 @@ namespace Astroid {
   }
 
   bool Message::is_encrypted () {
-    return has (tags, ustring("encrypted"));
+    return has_tag ("encrypted");
   }
 
   bool Message::is_signed () {
-    return has (tags, ustring("signed"));
+    return has_tag ("signed");
+  }
+
+  bool Message::has_tag (ustring t) {
+    if (nmmsg) return nmmsg->has_tag (t);
+    else return false;
   }
 
   /************
@@ -853,6 +869,11 @@ namespace Astroid {
     if (in_notmuch && tid == thread->thread_id) {
       thread->refresh (db);
     }
+  }
+
+  bool MessageThread::has_tag (ustring t) {
+    if (thread) return thread->has_tag (t);
+    else return false;
   }
 
   void MessageThread::load_messages (Db * db) {

@@ -3,6 +3,15 @@
 
 # include <notmuch.h>
 
+/* there was a bit of a round-dance of with the _st versions of these returning
+ * to the old name, but with different signature */
+# if (LIBNOTMUCH_MAJOR_VERSION < 5)
+# define notmuch_query_search_threads(x,y) notmuch_query_search_threads_st(x,y)
+# define notmuch_query_count_threads(x,y) notmuch_query_count_threads_st(x,y)
+# define notmuch_query_search_messages(x,y) notmuch_query_search_messages_st(x,y)
+# define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
+# endif
+
 namespace bfs = boost::filesystem;
 using std::cout;
 using std::endl;
@@ -23,7 +32,7 @@ int main () {
   notmuch_query_t * q = notmuch_query_create (nm_db, "*");
 
   unsigned int c;
-  notmuch_status_t st = notmuch_query_count_threads_st (q, &c); // destructive
+  notmuch_status_t st = notmuch_query_count_threads (q, &c); // destructive
   notmuch_query_destroy (q);
   q = notmuch_query_create (nm_db, "*");
 
@@ -32,7 +41,7 @@ int main () {
 
   notmuch_threads_t * threads;
   notmuch_thread_t  * thread;
-  st = notmuch_query_search_threads_st (q, &threads);
+  st = notmuch_query_search_threads (q, &threads);
 
   std::string thread_id;
 
@@ -57,7 +66,7 @@ int main () {
   /* restart query */
   cout << "restarting query.." << endl;
   q = notmuch_query_create (nm_db, "*");
-  st = notmuch_query_search_threads_st (q, &threads);
+  st = notmuch_query_search_threads (q, &threads);
 
   i = 0;
   int stop = 2;
@@ -106,7 +115,7 @@ int main () {
   notmuch_threads_t * ts2;
   notmuch_thread_t  * t2;
 
-  st = notmuch_query_search_threads_st (q2, &ts2);
+  st = notmuch_query_search_threads (q2, &ts2);
 
   for ( ; notmuch_threads_valid (ts2);
           notmuch_threads_move_to_next (ts2))
@@ -147,7 +156,7 @@ int main () {
 
   q2 = notmuch_query_create (nm_db2, qry_s);
 
-  st = notmuch_query_search_threads_st (q2, &ts2);
+  st = notmuch_query_search_threads (q2, &ts2);
 
   for ( ; notmuch_threads_valid (ts2);
           notmuch_threads_move_to_next (ts2))

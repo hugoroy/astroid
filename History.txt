@@ -1,6 +1,40 @@
-==
+== **
 
-* New icons by Elio Qoshi ( http://patreon.com/ura )
+* Attach messages by mids with 'A' in new emails.
+
+== v0.9.1 / 2017-04-30
+
+* Support old vte3.
+* Support old _st versions on Arch.
+
+== v0.9 / 2017-04-28
+
+* Drop use of old deprecated non _st functions, use their new names. Will
+  require 0.24 or newer.
+
+* No longer support pre-lastmod notmuches.
+
+* Catch missing content errors for messages, not fail.
+
+* Wait and block R/O database opening, not fail.
+
+* Defer changed_thread events on thread-index while still loading.
+
+* Do not update tags in thread-view when not ready.
+
+* configuration option thread_view.expand_flagged determines whether flagged
+  messages are expanded by default.
+
+* Better handle poll thread. Make sure to clean up connections here and in send_message.
+
+* Polling can be cancelled with C-c in main window.
+
+* Archive or close thread and then directly open next or next unread thread
+  in originating thread-index.
+
+== v0.8 / 2017-03-17
+
+* New logo and icons by Elio Qoshi ( http://patreon.com/ura )
 
 * Run hook for thread-view (Hugo Roy)
 
@@ -21,6 +55,15 @@
 
 * Delay sending of message with configured time, in order to be able to
   cancel wrongly sent messages.
+
+* New --start-polling, --stop-polling and --refresh LASTMOD options which
+  makes external polling mechanisms work better.
+
+* All notmuch tags are added to message CSS with 'nm-' prefix and some sanitation to allow thread-view customizing based on tag.
+
+* Reply-To mailing list.
+
+* Fix crypto and performance bugs among many others.
 
 == v0.7 / 2017-01-02
 

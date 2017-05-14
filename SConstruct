@@ -23,6 +23,9 @@ AddOption ("--disable-plugins", action = 'store_true', dest = 'disable_plugins',
 AddOption ("--disable-terminal", action='store_true', dest='disable_terminal',
     default = False, help = "Disable built-in VTE based terminal")
 
+AddOption ("--disable-embedded-editor", action='store_true', dest='disable_embedded',
+    default = False, help = "Disable embedded editor")
+
 AddOption ("--propagate-environment", action = 'store_true', dest = 'propagate_environment',
     default = False, help = "Propagate external environment variables to the build environment")
 
@@ -37,6 +40,7 @@ scss             = GetOption ('scss_compiler')
 profile          = GetOption ('profile')
 disable_terminal = GetOption ("disable_terminal")
 disable_plugins  = GetOption ("disable_plugins")
+disable_embedded = GetOption ("disable_embedded")
 
 prefix = GetOption ("prefix")
 
@@ -164,49 +168,6 @@ def CheckPKG(context, name):
   context.Result( ret )
   return ret
 
-nm_db_get_revision_test_src = """
-# include <notmuch.h>
-
-int main (int argc, char ** argv)
-{
-  notmuch_database_t * nm_db;
-  const char * uuid;
-  notmuch_database_get_revision (nm_db, &uuid);
-
-  return 0;
-}
-"""
-
-nm_query_threads_st = """
-# include <notmuch.h>
-
-int main (int argc, char ** argv)
-{
-  notmuch_query_t * q;
-  notmuch_threads_t * t;
-  notmuch_status_t st;
-
-  st = notmuch_query_search_threads_st (q, &t);
-
-  return 0;
-}
-"""
-
-nm_query_count_threads_st = """
-# include <notmuch.h>
-
-int main (int argc, char ** argv)
-{
-  notmuch_query_t * q;
-  unsigned int c;
-  notmuch_status_t st;
-
-  st = notmuch_query_count_threads_st (q, &c);
-
-  return 0;
-}
-"""
-
 # http://www.scons.org/doc/1.2.0/HTML/scons-user/x4076.html
 def check_notmuch (ctx, title, src):
   ctx.Message ("Checking for C function %s.." % title)
@@ -248,6 +209,9 @@ if disable_terminal:
   print "warning: built-in terminal disabled."
   env.AppendUnique (CPPFLAGS = [ '-DDISABLE_VTE' ])
 
+if disable_embedded:
+  env.AppendUnique (CPPFLAGS = [ '-DDISABLE_EMBEDDED' ])
+
 if not disable_libsass:
   if conf.CheckLibWithHeader ('libsass', 'sass_context.h', 'c'):
     env.AppendUnique (CPPFLAGS = [ '-DSASSCTX_SASS_CONTEXT_H' ])
@@ -286,26 +250,6 @@ else:
 if not conf.CheckLibWithHeader ('notmuch', 'notmuch.h', 'c'):
   print "notmuch does not seem to be installed."
   Exit (1)
-
-if conf.CheckNotmuch ('notmuch_database_get_revision',
-                      nm_db_get_revision_test_src):
-  have_get_rev = True
-  env.AppendUnique (CPPFLAGS = [ '-DHAVE_NOTMUCH_GET_REV' ])
-else:
-  have_get_rev = False
-  print "notmuch_database_get_revision() not available. A recent notmuch with lastmod capabilities will result in easier updating of new threads and smoother polls."
-
-if conf.CheckNotmuch ('notmuch_query_search_threads_st',
-                      nm_query_threads_st):
-  env.AppendUnique (CPPFLAGS = [ '-DHAVE_QUERY_THREADS_ST' ])
-else:
-  print "notmuch_query_*_st status versions are not available, some error checking is not possible - and tests will fail. consider upgrading notmuch to a version equal or later than 0.21."
-
-if conf.CheckNotmuch ('notmuch_query_count_threads_st',
-                      nm_query_count_threads_st):
-  env.AppendUnique (CPPFLAGS = [ '-DHAVE_QUERY_COUNT_THREADS_ST' ])
-else:
-  print "notmuch_query_*_count__st status versions are not available, some error checking is not possible - and tests will fail. consider upgrading notmuch to a version equal or later than 0.21."
 
 # external libraries
 env.ParseConfig ('pkg-config --libs --cflags glibmm-2.4')
@@ -474,6 +418,7 @@ print "    libsass ..: ", (not disable_libsass)
 print "    scss .....: ", scss, "( use:", disable_libsass, ")"
 print "    plugins ..: ", (not disable_plugins)
 print "    terminal .: ", (not disable_terminal)
+print "    embedded .: ", (not disable_embedded)
 print "    prefix ...: ", prefix
 print ""
 
@@ -509,7 +454,7 @@ inst_shr = env.Install (idir_ui,  Glob ('ui/*.glade') +
                                   Glob ('ui/*.html'))
 
 # icons are installed in two locations
-inst_shr = env.Install (os.path.join(idir_ui, 'icons'),  Glob ('ui/icons/*'))
+inst_shr += env.Install (os.path.join(idir_ui, 'icons'),  Glob ('ui/icons/*'))
 
 inst_shr += env.InstallAs (os.path.join (idir_icon, '512x512/apps/astroid.png'), 'ui/icons/icon_color.png')
 inst_shr += env.InstallAs (os.path.join (idir_icon, 'scalable/apps/astroid.svg'), 'ui/icons/icon_color.svg')

@@ -16,6 +16,15 @@
 # include "config.hh"
 # include "proto.hh"
 
+/* there was a bit of a round-dance of with the _st versions of these returning
+ * to the old name, but with different signature */
+# if (LIBNOTMUCH_MAJOR_VERSION < 5)
+# define notmuch_query_search_threads(x,y) notmuch_query_search_threads_st(x,y)
+# define notmuch_query_count_threads(x,y) notmuch_query_count_threads_st(x,y)
+# define notmuch_query_search_messages(x,y) notmuch_query_search_messages_st(x,y)
+# define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
+# endif
+
 namespace Astroid {
   class NotmuchItem : public Glib::Object {
     public:
@@ -113,9 +122,7 @@ namespace Astroid {
 
       bool thread_in_query (ustring, ustring);
 
-# ifdef HAVE_NOTMUCH_GET_REV
       unsigned long get_revision ();
-# endif
 
       notmuch_database_t * nm_db;
 
@@ -176,11 +183,11 @@ namespace Astroid {
       DbMode mode;
 
       bool open_db_write (bool);
-      bool open_db_read_only ();
+      bool open_db_read_only (bool);
       bool closed = false;
 
-      const int db_write_open_timeout = 120; // seconds
-      const int db_write_open_delay   = 1;   // seconds
+      const int db_open_timeout = 120; // seconds
+      const int db_open_delay   = 1;   // seconds
 
   };
 

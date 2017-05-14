@@ -83,14 +83,26 @@ namespace Astroid {
 
   void ComposeMessage::set_references (ustring _refs) {
     references = _refs;
-    g_mime_object_set_header (GMIME_OBJECT(message), "References",
-        references.c_str());
+    if (references.empty ()) {
+      g_mime_header_list_remove (
+          g_mime_object_get_header_list (GMIME_OBJECT(message)),
+          "References");
+    } else {
+      g_mime_object_set_header (GMIME_OBJECT(message), "References",
+          references.c_str());
+    }
   }
 
   void ComposeMessage::set_inreplyto (ustring _inreplyto) {
     inreplyto = _inreplyto;
-    g_mime_object_set_header (GMIME_OBJECT(message), "In-Reply-To",
-        inreplyto.c_str());
+    if (inreplyto.empty ()) {
+      g_mime_header_list_remove (
+          g_mime_object_get_header_list (GMIME_OBJECT(message)),
+          "In-Reply-To");
+    } else {
+      g_mime_object_set_header (GMIME_OBJECT(message), "In-Reply-To",
+          inreplyto.c_str());
+    }
   }
 
   void ComposeMessage::build () {
@@ -362,7 +374,12 @@ namespace Astroid {
 
     while (delay > 0 && !cancel_send_during_delay) {
       LOG (debug) << "cm: sending in " << delay << " seconds..";
-      message_send_status_msg = ustring::compose ("sending message in %1 seconds... Press C-c to cancel!", delay); /*fixme replace C-c with the actual keybding configured by the user*/
+      if (astroid->hint_level () < 1) {
+        /* TODO: replace C-c with the actual keybinding configured by the user */
+        message_send_status_msg = ustring::compose ("sending message in %1 seconds... Press C-c to cancel!", delay);
+      } else {
+        message_send_status_msg = ustring::compose ("sending message in %1 seconds...", delay);
+      }
       d_message_send_status ();
       std::chrono::seconds sec (1);
       send_cancel_cv.wait_until (lk, std::chrono::system_clock::now () + sec, [&] { return cancel_send_during_delay; });
@@ -371,7 +388,7 @@ namespace Astroid {
 
     if (cancel_send_during_delay) {
       LOG (error) << "cm: cancelled sending before message could be sent.";
-      message_send_status_msg = "sending message.. cancelled before sending.";
+      message_send_status_msg = "sending message... cancelled before sending.";
       message_send_status_warn = true;
       d_message_send_status ();
 
@@ -383,7 +400,12 @@ namespace Astroid {
 
     lk.unlock ();
 
-    message_send_status_msg = "sending message..";
+    if (astroid->hint_level () < 1) {
+      /* TODO: replace C-c with the actual keybinding configured by the user */
+      message_send_status_msg = "sending message... Press C-c to cancel!";
+    } else {
+      message_send_status_msg = "sending message...";
+    }
     d_message_send_status ();
 
     /* Send the message */
@@ -419,8 +441,9 @@ namespace Astroid {
       }
 
       /* connect channels */
-      Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_out), stdout, Glib::IO_IN | Glib::IO_HUP);
-      Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_err), stderr, Glib::IO_IN | Glib::IO_HUP);
+      c_ch_stdout = Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_out), stdout, Glib::IO_IN | Glib::IO_HUP);
+      c_ch_stderr = Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_err), stderr, Glib::IO_IN | Glib::IO_HUP);
+
 
       ch_stdout = Glib::IOChannel::create_from_fd (stdout);
       ch_stderr = Glib::IOChannel::create_from_fd (stderr);
@@ -440,6 +463,13 @@ namespace Astroid {
       int status;
       waitpid (pid, &status, 0);
       g_spawn_close_pid (pid);
+
+      c_ch_stderr.disconnect();
+      c_ch_stdout.disconnect();
+
+      ::close (stdin);
+      ::close (stdout);
+      ::close (stderr);
 
       if (status == 0)
       {

@@ -49,6 +49,8 @@ namespace Astroid {
 
     ustring db_path = ustring (config.get<string> ("database.path"));
 
+    LOG (info) << "db path: " << db_path;
+
     path_db = Utils::expand (path (db_path));
     path_db = absolute (path_db);
 
@@ -69,9 +71,10 @@ namespace Astroid {
 
     time_t start = clock ();
 
-    nm_db     = NULL;
+    nm_db = NULL;
+
     if (mode == DATABASE_READ_ONLY) {
-      open_db_read_only ();
+      open_db_read_only (true);
     } else if (mode == DATABASE_READ_WRITE) {
       open_db_write (true);
     } else {
@@ -106,16 +109,16 @@ namespace Astroid {
       if (s == NOTMUCH_STATUS_XAPIAN_EXCEPTION) {
         LOG (error) << "db: error: could not open db r/w, waited " <<
                 time << " of maximum " <<
-                db_write_open_timeout << " seconds.";
+                db_open_timeout << " seconds.";
 
-        chrono::seconds duration (db_write_open_delay);
+        chrono::seconds duration (db_open_delay);
         this_thread::sleep_for (duration);
 
-        time += db_write_open_delay;
+        time += db_open_delay;
 
       }
 
-    } while (block && (s == NOTMUCH_STATUS_XAPIAN_EXCEPTION) && (time <= db_write_open_timeout));
+    } while (block && (s == NOTMUCH_STATUS_XAPIAN_EXCEPTION) && (time <= db_open_timeout));
 
     if (s != NOTMUCH_STATUS_SUCCESS) {
       LOG (error) << "db: error: failed opening database for writing, have you configured the notmuch database path correctly?";
@@ -123,27 +126,43 @@ namespace Astroid {
       release_rw_lock (rw_lock);
       throw database_error ("failed to open database for writing");
 
-
       return false;
     }
 
     return true;
   }
 
-  bool Db::open_db_read_only () {
+  bool Db::open_db_read_only (bool block) {
     Db::acquire_ro_lock ();
 
-    notmuch_status_t s =
-      notmuch_database_open (
-        path_db.c_str(),
-        notmuch_database_mode_t::NOTMUCH_DATABASE_MODE_READ_ONLY,
-        &nm_db);
+    notmuch_status_t s;
+
+    int time = 0;
+
+    do {
+      s = notmuch_database_open (
+          path_db.c_str(),
+          notmuch_database_mode_t::NOTMUCH_DATABASE_MODE_READ_ONLY,
+          &nm_db);
+
+      if (s == NOTMUCH_STATUS_XAPIAN_EXCEPTION) {
+        LOG (error) << "db: error: could not open db r/o, waited " <<
+                time << " of maximum " <<
+                db_open_timeout << " seconds.";
+
+        chrono::seconds duration (db_open_delay);
+        this_thread::sleep_for (duration);
+
+        time += db_open_delay;
+
+      }
+    } while (block && (s == NOTMUCH_STATUS_XAPIAN_EXCEPTION) && (time <= db_open_timeout));
 
     if (s != NOTMUCH_STATUS_SUCCESS) {
       LOG (error) << "db: error: failed opening database for reading, have you configured the notmuch database path correctly?";
 
+      release_ro_lock ();
       throw database_error ("failed to open database (read-only)");
-
 
       return false;
     }
@@ -209,15 +228,12 @@ namespace Astroid {
     close ();
   }
 
-# ifdef HAVE_NOTMUCH_GET_REV
   unsigned long Db::get_revision () {
     const char *uuid;
     unsigned long revision = notmuch_database_get_revision (nm_db, &uuid);
 
     return revision;
   }
-
-# endif
 
   void Db::load_tags () {
     notmuch_tags_t * nm_tags = notmuch_database_get_all_tags (nm_db);
@@ -334,12 +350,8 @@ namespace Astroid {
     unsigned int c = 0;
     notmuch_status_t st = NOTMUCH_STATUS_SUCCESS;
 
-# ifdef HAVE_QUERY_COUNT_THREADS_ST
-    st = notmuch_query_count_threads_st (query, &c);
+    st = notmuch_query_count_threads (query, &c);
     if (st != NOTMUCH_STATUS_SUCCESS) c = 0;
-# else
-    c = notmuch_query_count_threads (query);
-# endif
 
     if (c > 1) {
       throw database_error ("db: got more than one thread for thread id.");
@@ -362,16 +374,11 @@ namespace Astroid {
     notmuch_threads_t * nm_threads;
     notmuch_status_t st = NOTMUCH_STATUS_SUCCESS;
 
-# ifdef HAVE_QUERY_THREADS_ST
-    /* available since notmuch 0.21 */
-    st = notmuch_query_search_threads_st (query, &nm_threads);
-# else
-    nm_threads = notmuch_query_search_threads (query);
-# endif
+    st = notmuch_query_search_threads (query, &nm_threads);
 
     if ((st != NOTMUCH_STATUS_SUCCESS) || nm_threads == NULL) {
       notmuch_query_destroy (query);
-      LOG (error) << "db: could not find thread: " << thread_id << ", status: " << st;
+      LOG (error) << "db: could not find thread: " << thread_id << ", status: " << notmuch_status_to_string(st);
 
       func (NULL);
 

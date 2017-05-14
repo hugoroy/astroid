@@ -71,6 +71,7 @@ namespace Astroid {
       /* resources */
       ustring home_uri;           // relative url for requests
 
+      bool    expand_flagged;
       bool    enable_code_prettify;
       std::vector<ustring> code_prettify_only_tags;
       ustring code_prettify_uri = "https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js";
@@ -218,7 +219,8 @@ namespace Astroid {
       void insert_header_date (ustring &, refptr<Message>);
       ustring create_header_row (ustring title, ustring value, bool important, bool escape, bool noprint = false);
       ustring header_row_value (ustring value, bool escape);
-      void message_refresh_tags (Db *, Message *);
+      void message_render_tags (refptr<Message>, WebKitDOMElement * div_message);
+      void message_update_css_tags (refptr<Message>, WebKitDOMElement * div_message);
 
       bool open_html_part_external;
       void display_part (refptr<Message>, refptr<Chunk>, MessageState::Element);
@@ -286,6 +288,7 @@ namespace Astroid {
 
     private:
       Keybindings multi_keys;
+      Keybindings next_multi;
       void register_keys ();
 
       /* changed signals */
@@ -317,9 +320,23 @@ namespace Astroid {
 
       void emit_element_action (unsigned int element, ElementAction action);
 
+      /* actions for originating thread-index */
+      typedef enum {
+        IA_Next = 0,
+        IA_Previous,
+        IA_NextUnread,
+        IA_PreviousUnread,
+      } IndexAction;
+
+      typedef sigc::signal <bool, ThreadView *, IndexAction> type_index_action;
+      type_index_action signal_index_action ();
+
+      bool emit_index_action (IndexAction action);
+
     protected:
       type_signal_ready m_signal_ready;
       type_element_action m_element_action;
+      type_index_action m_index_action;
   };
 }
 

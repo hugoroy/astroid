@@ -6,8 +6,6 @@
 # include <memory>
 
 # include <gtkmm.h>
-# include <gdk/gdkx.h>
-# include <gtkmm/socket.h>
 
 # include <boost/filesystem.hpp>
 
@@ -93,7 +91,9 @@ namespace Astroid {
     editor_config = astroid->config ("editor");
     in_read = false;
 
+# ifndef DISABLE_EMBEDDED
     embed_editor = !editor_config.get<bool> ("external_editor");
+# endif
     save_draft_on_force_quit = editor_config.get <bool> ("save_draft_on_force_quit");
 
     ustring attachment_words_s = editor_config.get<string> ("attachment_words");
@@ -191,6 +191,7 @@ namespace Astroid {
 
     make_tmpfile ();
 
+# ifndef DISABLE_EMBEDDED
     if (embed_editor) {
       editor = new Plugin (this, _mid);
 
@@ -198,8 +199,11 @@ namespace Astroid {
       editor_box->pack_start (dynamic_cast<Plugin *> (editor)->bin, false, false, 2);
 
     } else {
+# endif
       editor = new External (this);
+# ifndef DISABLE_EMBEDDED
     }
+# endif
 
     thread_view = Gtk::manage(new ThreadView(main_window));
     thread_view->edit_mode = true;
@@ -360,6 +364,37 @@ namespace Astroid {
         "Attach file",
         [&] (Key) {
           attach_file ();
+          return true;
+        });
+
+    keys.register_key ("A", "edit_messsage.attach_mids",
+        "Attach messages by mids",
+        [&] (Key) {
+          main_window->enable_command (CommandBar::CommandMode::AttachMids,
+              "Attach mids:", "", [&] (ustring mids)
+              {
+                auto midsv = VectorUtils::split_and_trim (mids, ",");
+                if (!midsv.empty ()) {
+                  Db db;
+
+                  for (auto mid : midsv) {
+                    db.on_message (mid, [&] (notmuch_message_t * msg) {
+                        if (msg != NULL) {
+                          LOG (debug) << "em: attaching: " << mid;
+
+                          refptr<Message> mmsg  = refptr<Message> (new Message (msg, 0));
+                          add_attachment (new ComposeMessage::Attachment (mmsg));
+
+                        } else {
+                          LOG (warn) << "em: could not find and attach mid: " << mid;
+                        }
+                        });
+                  }
+                  prepare_message ();
+                  read_edited_message ();
+                }
+              });
+
           return true;
         });
 
@@ -808,6 +843,7 @@ namespace Astroid {
   void EditMessage::editor_toggle (bool on) {
     LOG (debug) << "em: editor toggle: " << on;
 
+# ifndef DISABLE_EMBEDDED
     if (embed_editor) {
       if (on) {
         prepare_message ();
@@ -866,6 +902,7 @@ namespace Astroid {
       }
 
     } else {
+# endif
       if (on && !editor->started ()) {
         /* start editor */
         editor_active = true;
@@ -887,7 +924,9 @@ namespace Astroid {
 
         editor_active = false;
       }
+# ifndef DISABLE_EMBEDDED
     }
+# endif
   }
 
   void EditMessage::activate_editor () {

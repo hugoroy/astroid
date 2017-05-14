@@ -25,6 +25,7 @@ namespace Astroid {
         Filter,
         Tag,        /* apply or remove tags */
         DiffTag,    /* apply or remove tags using + or - */
+        AttachMids,
       };
 
       CommandBar ();
@@ -46,6 +47,8 @@ namespace Astroid {
 
       ustring get_text ();
       void    set_text (ustring);
+
+      void    start_generic (ustring);
 
       /* relay to search bar event handler */
       bool command_handle_event (GdkEventKey *);
