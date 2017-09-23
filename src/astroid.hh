@@ -12,6 +12,8 @@
 # define LOG(x) BOOST_LOG_TRIVIAL(x)
 # define warn warning
 
+# include <gmime/gmime.h>
+
 # include <gtkmm.h>
 # include <glibmm.h>
 
@@ -56,6 +58,7 @@ namespace Astroid {
       MainWindow * open_new_window (bool open_defaults = true);
 
       int hint_level ();
+      GdkAtom clipboard_target = GDK_SELECTION_CLIPBOARD;
 
     protected:
       Config * m_config;

@@ -19,6 +19,7 @@ namespace Astroid {
       bool isgpg = false;
 
       GMimeObject * decrypt_and_verify (GMimeObject * mo);
+      GMimeMessage * decrypt_message (GMimeMessage * in);
 
       bool verify_signature (GMimeObject * mo);
 
@@ -38,6 +39,7 @@ namespace Astroid {
                     GError **);
 
       bool sign (GMimeObject * mo, ustring userid, GMimeMultipartSigned ** s, GError **);
+
 
       bool decrypted        = false;
       bool verified         = false; /* signature ok */
@@ -61,8 +63,9 @@ namespace Astroid {
       bool verify_signature_list (GMimeSignatureList *);
 
     public:
-      static ustring          get_md5_digest (ustring str);
-      static unsigned char *  get_md5_digest_char (ustring str);
+      static ustring  get_md5_digest (ustring str);
+      static gssize   get_md5_length ();
+      static refptr<Glib::Bytes> get_md5_digest_b (ustring str);
   };
 
 }

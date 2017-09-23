@@ -130,7 +130,7 @@ namespace Astroid {
 
     /* icon list */
     Gtk::Image * reply = Gtk::manage (new Gtk::Image ());
-    reply->set_from_icon_name ("gtk-undo", Gtk::ICON_SIZE_LARGE_TOOLBAR);
+    reply->set_from_icon_name ("mail-reply-sender", Gtk::ICON_SIZE_LARGE_TOOLBAR);
     Gtk::MenuItem * reply_i = Gtk::manage (new Gtk::MenuItem (*reply));
     reply_i->signal_activate ().connect (
         sigc::bind (
@@ -139,7 +139,7 @@ namespace Astroid {
     reply_i->set_tooltip_text ("Reply to latest message");
 
     Gtk::Image * forward = Gtk::manage (new Gtk::Image ());
-    forward->set_from_icon_name ("gtk-go-forward", Gtk::ICON_SIZE_LARGE_TOOLBAR);
+    forward->set_from_icon_name ("mail-forward", Gtk::ICON_SIZE_LARGE_TOOLBAR);
     Gtk::MenuItem * forward_i = Gtk::manage (new Gtk::MenuItem (*forward));
     forward_i->signal_activate ().connect (
         sigc::bind (
@@ -925,14 +925,14 @@ namespace Astroid {
         [&] (Key) {
           auto thread = get_current_thread ();
           if (thread) {
-            ustring tag_list = VectorUtils::concat_tags (thread->tags) + ", ";
+            ustring tag_list = VectorUtils::concat_tags (thread->tags) + " ";
 
             main_window->enable_command (CommandBar::CommandMode::Tag,
                 tag_list,
                 [&,thread](ustring tgs) {
                   LOG (debug) << "ti: got tags: " << tgs;
 
-                  vector<ustring> tags = VectorUtils::split_and_trim (tgs, ",");
+                  vector<ustring> tags = VectorUtils::split_and_trim (tgs, ",| ");
 
                   /* remove empty */
                   tags.erase (std::remove (tags.begin (), tags.end (), ""), tags.end ());

@@ -396,6 +396,27 @@ namespace Astroid {
           return true;
         });
 
+    keys.register_key ("\"", "main_window.clipboard",
+        "Set target clipboard",
+        [&] (Key k) {
+          multi_key (clipboard, k);
+          return true;
+        });
+
+    clipboard.register_key ("+", "main_window.clipboard.clipboard",
+        "Set target clipboard to CLIPBOARD (default)",
+        [&] (Key) {
+          astroid->clipboard_target = GDK_SELECTION_CLIPBOARD;
+          return true;
+        });
+
+    clipboard.register_key ("*", "main_window.clipboard.primary",
+        "Set target clipboard to PRIMARY",
+        [&] (Key) {
+          astroid->clipboard_target = GDK_SELECTION_PRIMARY;
+          return true;
+        });
+
 # ifndef DISABLE_VTE
     keys.register_key ("|", "main_window.open_terminal",
         "Open terminal",
@@ -799,7 +820,7 @@ namespace Astroid {
 
     //LOG (debug) << "mw: grab modal to: " << n;
 
-    if (has_focus() || (get_focus() && get_focus()->has_focus())) {
+    if (_has_focus) {
       /* we have focus */
       ((Mode*) notebook.get_nth_page (n))->grab_modal();
     } else {
@@ -813,7 +834,7 @@ namespace Astroid {
   }
 
   void MainWindow::set_active (int n) {
-    //LOG (debug) << "mw: set active: " << n << ", current: " << current;
+    LOG (debug) << "mw: set active: " << n << ", current: " << current;
 
     if (n >= 0 && n <= notebook.get_n_pages()-1) {
 
@@ -830,6 +851,7 @@ namespace Astroid {
   }
 
   bool MainWindow::on_my_focus_in_event (GdkEventFocus * /* event */) {
+    _has_focus = true;
     if (!in_quit && active) set_active (current);
     LOG (debug) << "mw: focus-in: " << id << " active: " << active << ", in_quit: " << in_quit;
     return false;
@@ -837,6 +859,7 @@ namespace Astroid {
 
   bool MainWindow::on_my_focus_out_event (GdkEventFocus * /* event */) {
     //LOG (debug) << "mw: focus-out: " << id;
+    _has_focus = false;
     if ((current < notebook.get_n_pages ()) && (current >= 0))
       ((Mode*) notebook.get_nth_page (current))->release_modal();
     return false;

@@ -23,6 +23,9 @@
 # define notmuch_query_count_threads(x,y) notmuch_query_count_threads_st(x,y)
 # define notmuch_query_search_messages(x,y) notmuch_query_search_messages_st(x,y)
 # define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
+# if (LIBNOTMUCH_MINOR_VERSION < 1)
+# define notmuch_database_index_file(d,f,o,m) notmuch_database_add_message(d,f,m)
+# endif 
 # endif
 
 namespace Astroid {
@@ -47,6 +50,7 @@ namespace Astroid {
 
       virtual ustring str () = 0;
       virtual bool    matches (std::vector<ustring> &k) = 0;
+      virtual bool    in_query (Db *, ustring) = 0;
   };
 
   /* the notmuch message object should get by on the db only */
@@ -70,6 +74,7 @@ namespace Astroid {
 
       ustring str () override;
       bool matches (std::vector<ustring> &k) override;
+      bool in_query (Db *, ustring) override;
 
     private:
       std::vector<ustring> get_tags (notmuch_message_t *);
@@ -97,6 +102,7 @@ namespace Astroid {
 
       ustring str () override;
       bool matches (std::vector<ustring> &k) override;
+      bool in_query (Db *, ustring) override;
 
     private:
       int check_total_messages (notmuch_thread_t *);
@@ -121,6 +127,7 @@ namespace Astroid {
       void on_message (ustring, std::function <void(notmuch_message_t *)>);
 
       bool thread_in_query (ustring, ustring);
+      bool message_in_query (ustring, ustring);
 
       unsigned long get_revision ();
 

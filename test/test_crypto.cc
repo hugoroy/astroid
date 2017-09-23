@@ -8,6 +8,7 @@
 # include "message_thread.hh"
 # include "account_manager.hh"
 # include "db.hh"
+# include "utils/gmime/gmime-compat.h"
 
 
 BOOST_AUTO_TEST_SUITE(GPGEncryption)
@@ -61,7 +62,7 @@ BOOST_AUTO_TEST_SUITE(GPGEncryption)
     LOG (test) << "cm: encryption error: " << c->encryption_error;
 
     LOG (test) << "cm: encrypted content: ";
-    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message));
+    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message), NULL);
 
     LOG (test) << "cm: deleting ComposeMessage..";
 
@@ -107,7 +108,7 @@ BOOST_AUTO_TEST_SUITE(GPGEncryption)
     LOG (test) << "cm: encryption error: " << c->encryption_error;
 
     LOG (test) << "cm: encrypted content: ";
-    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message));
+    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message), NULL);
 
     LOG (test) << "cm: deleting ComposeMessage..";
 
@@ -155,7 +156,7 @@ BOOST_AUTO_TEST_SUITE(GPGEncryption)
     LOG (test) << "cm: encryption error: " << c->encryption_error;
 
     LOG (test) << "cm: encrypted content: ";
-    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message));
+    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message), NULL);
 
     delete c;
 
@@ -249,6 +250,9 @@ BOOST_AUTO_TEST_SUITE(GPGEncryption)
         refptr<MessageThread> mthread = refptr<MessageThread>(new MessageThread (nt));
         Db db (Db::DATABASE_READ_ONLY);
         mthread->load_messages (&db);
+
+        BOOST_CHECK_MESSAGE (bdy == mthread->messages[0]->viewable_text (false), "message body matches composed message");
+
         tries++;
       }
     } catch (Astroid::message_error &ex) {
@@ -282,6 +286,86 @@ BOOST_AUTO_TEST_SUITE(GPGEncryption)
     system ("notmuch new");
 
     teardown ();
+  }
+
+  BOOST_AUTO_TEST_CASE (decrypt_entire_message)
+  {
+    using Astroid::ComposeMessage;
+    using Astroid::Account;
+    using Astroid::Message;
+    setup ();
+
+    Account a = astroid->accounts->accounts[0];
+    LOG (trace) << "cy: account gpg: " << a.gpgkey;
+    a.email = "gaute@astroidmail.bar";
+
+    ComposeMessage * c = new ComposeMessage ();
+    c->set_from (&a);
+    c->set_to ("astrid@astroidmail.bar");
+    c->encrypt =  true;
+    c->sign = false;
+
+    ustring bdy = "This is test: æøå.\n > testing\ntesting\n...";
+
+    c->body << bdy;
+
+    c->build ();
+    c->finalize ();
+    ustring fn = c->write_tmp ();
+
+    BOOST_CHECK_MESSAGE (c->encryption_success == true, "encryption should be successful");
+
+    LOG (test) << "cm: encrypted content: ";
+    LOG (test) << g_mime_object_to_string (GMIME_OBJECT(c->message), NULL);
+
+    delete c;
+
+    Message m (fn);
+    ustring rbdy = m.viewable_text (false);
+
+    BOOST_CHECK_MESSAGE (bdy == rbdy, "message reading produces the same output as compose message input");
+
+    /* Try to get a decrypted version of the message */
+    GMimeMessage * _dm = m.decrypt ();
+    BOOST_CHECK (_dm != NULL);
+    Message dm (_dm);
+
+    LOG (test) << "cm: decrypted content: ";
+    LOG (test) << g_mime_object_to_string (GMIME_OBJECT (_dm), NULL);
+
+    unlink (fn.c_str ());
+
+    teardown ();
+  }
+
+  BOOST_AUTO_TEST_CASE (crypto_md5)
+  {
+    using Astroid::Crypto;
+
+    ustring data = "12345asdfasdfasdf";
+    ustring expected = "983443541cfec1e77671d8dd8e0ee33e"; // echo -n ... | md5sum
+
+    ustring chk;
+    BOOST_CHECK_NO_THROW (chk = Crypto::get_md5_digest (data));
+    BOOST_CHECK (chk == expected);
+    LOG (test) << "digest: " << chk;
+
+    /* testing md5_b */
+    refptr<Glib::Bytes> d = Crypto::get_md5_digest_b (data);
+
+    LOG (test) << "digest, length: " << d->get_size ();
+
+    gsize len;
+    guint8 * buffer = (guint8 *) d->get_data (len);
+
+    std::stringstream ss;
+    for (unsigned int i = 0; i < len; i++)
+      ss << std::hex << std::setw(2) << std::setfill ('0') << static_cast<unsigned int>(buffer[i]);
+
+    LOG (test) << "digest, bytes:  " << ss.str ();
+
+    BOOST_CHECK (len == 16);
+    BOOST_CHECK (ss.str () == expected);
   }
 
 BOOST_AUTO_TEST_SUITE_END()

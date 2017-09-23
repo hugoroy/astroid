@@ -25,6 +25,7 @@
 # include "utils/ustring_utils.hh"
 # include "utils/gravatar.hh"
 # include "utils/cmd.hh"
+# include "utils/gmime/gmime-compat.h"
 # ifndef DISABLE_PLUGINS
   # include "plugin/manager.hh"
 # endif
@@ -32,6 +33,7 @@
 # include "actions/cmdaction.hh"
 # include "actions/tag_action.hh"
 # include "actions/toggle_action.hh"
+# include "actions/difftag_action.hh"
 # include "modes/mode.hh"
 # include "modes/reply_message.hh"
 # include "modes/forward_message.hh"
@@ -1066,7 +1068,7 @@ namespace Astroid {
 
     ustring mime_type;
     if (c->content_type) {
-      mime_type = ustring(g_mime_content_type_to_string (c->content_type));
+      mime_type = ustring(g_mime_content_type_get_mime_type (c->content_type));
     } else {
       mime_type = "application/octet-stream";
     }
@@ -1202,6 +1204,8 @@ namespace Astroid {
             em = (c = g_mime_certificate_get_email (ce), c ? c : "");
             ky = (c = g_mime_certificate_get_key_id (ce), c ? c : "");
 
+
+# if (GMIME_MAJOR_VERSION < 3)
             switch (g_mime_signature_get_status (s)) {
               case GMIME_SIGNATURE_STATUS_GOOD:
                 gd = "Good";
@@ -1229,11 +1233,35 @@ namespace Astroid {
                   err = "[Error: " + VectorUtils::concat (sig_errors, ",") + "]";
                 }
                 break;
+# else
+            GMimeSignatureStatus stat = g_mime_signature_get_status (s);
+            if (g_mime_signature_status_good (stat)) {
+                gd = "Good";
+            } else if (g_mime_signature_status_bad (stat) || g_mime_signature_status_error (stat)) {
+
+              if (g_mime_signature_status_bad (stat)) gd = "Bad";
+              else gd = "Erroneous";
+
+              if (stat & GMIME_SIGNATURE_STATUS_KEY_REVOKED) sig_errors.push_back ("revoked-key");
+              if (stat & GMIME_SIGNATURE_STATUS_KEY_EXPIRED) sig_errors.push_back ("expired-key");
+              if (stat & GMIME_SIGNATURE_STATUS_SIG_EXPIRED) sig_errors.push_back ("expired-sig");
+              if (stat & GMIME_SIGNATURE_STATUS_KEY_MISSING) sig_errors.push_back ("key-missing");
+              if (stat & GMIME_SIGNATURE_STATUS_CRL_MISSING) sig_errors.push_back ("crl-missing");
+              if (stat & GMIME_SIGNATURE_STATUS_CRL_TOO_OLD) sig_errors.push_back ("crl-too-old");
+              if (stat & GMIME_SIGNATURE_STATUS_BAD_POLICY)  sig_errors.push_back ("bad-policy");
+              if (stat & GMIME_SIGNATURE_STATUS_SYS_ERROR)   sig_errors.push_back ("sys-error");
+              if (stat & GMIME_SIGNATURE_STATUS_TOFU_CONFLICT) sig_errors.push_back ("tofu-conflict");
+
+              if (!sig_errors.empty ()) {
+                err = "[Error: " + VectorUtils::concat (sig_errors, ",") + "]";
+              }
+# endif
             }
           } else {
             err = "[Error: Could not get certificate]";
           }
 
+# if (GMIME_MAJOR_VERSION < 3)
           GMimeCertificateTrust t = g_mime_certificate_get_trust (ce);
           ustring trust = "";
           switch (t) {
@@ -1244,6 +1272,18 @@ namespace Astroid {
             case GMIME_CERTIFICATE_TRUST_FULLY: trust = "fully"; break;
             case GMIME_CERTIFICATE_TRUST_ULTIMATE: trust = "ultimate"; break;
           }
+# else
+          GMimeTrust t = g_mime_certificate_get_trust (ce);
+          ustring trust = "";
+          switch (t) {
+            case GMIME_TRUST_UNKNOWN: trust = "unknown"; break;
+            case GMIME_TRUST_UNDEFINED: trust = "undefined"; break;
+            case GMIME_TRUST_NEVER: trust = "never"; break;
+            case GMIME_TRUST_MARGINAL: trust = "marginal"; break;
+            case GMIME_TRUST_FULL: trust = "full"; break;
+            case GMIME_TRUST_ULTIMATE: trust = "ultimate"; break;
+          }
+# endif
 
 
           sign_string += ustring::compose (
@@ -1892,7 +1932,7 @@ namespace Astroid {
     if (_mtype == NULL) {
       mime_type = "application/octet-stream";
     } else {
-      mime_type = ustring(g_mime_content_type_to_string (c->content_type));
+      mime_type = ustring(g_mime_content_type_get_mime_type (c->content_type));
     }
 
     LOG (debug) << "tv: set attachment, mime_type: " << mime_type << ", mtype: " << _mtype;
@@ -2219,7 +2259,7 @@ namespace Astroid {
           return true;
         });
 
-    keys.register_key (Key (GDK_KEY_Return), { Key (GDK_KEY_KP_Enter) },
+    keys.register_key (Key (GDK_KEY_Return), { Key (GDK_KEY_KP_Enter), Key (true, false, (guint) GDK_KEY_space) },
         "thread_view.activate",
         "Open/expand/activate focused element",
         [&] (Key) {
@@ -2232,7 +2272,7 @@ namespace Astroid {
           return element_action (ESave);
         });
 
-    keys.register_key ("d", "thread_view.delete",
+    keys.register_key ("d", "thread_view.delete_attachment",
         "Delete attachment (if editing)",
         [&] (Key) {
           if (edit_mode) {
@@ -2240,12 +2280,6 @@ namespace Astroid {
             return element_action (EDelete);
           }
           return false;
-        });
-
-    keys.register_key (Key(GDK_KEY_space), "thread_view.open",
-        "Open attachment or message",
-        [&] (Key) {
-          return element_action (EOpen);
         });
 
     keys.register_key ("e", "thread_view.expand",
@@ -2446,22 +2480,26 @@ namespace Astroid {
         });
 
     keys.register_key ("c", "thread_view.compose_to_sender",
-        "Compose a new message to the sender of the message (or receiver if sender is you)",
+        "Compose a new message to the sender of the message (or all recipients if sender is you)",
         [&] (Key) {
           if (!edit_mode) {
-            Address _to = focused_message->sender;
-            AddressList to;
+            Address sender = focused_message->sender;
+            Address from;
+            AddressList to, cc, bcc;
 
-            if (astroid->accounts->is_me (_to)) {
-              to = AddressList(focused_message->to ());
-              Address from = _to;
-              main_window->add_mode (new EditMessage (main_window, to.str (), from.full_address ()));
+            /* Send to original sender if message is not from own account,
+               otherwise use all recipients as in the original */
+            if (astroid->accounts->is_me (sender)) {
+              from = sender;
+              to   = AddressList(focused_message->to  ());
+              cc   = AddressList(focused_message->cc  ());
+              bcc  = AddressList(focused_message->bcc ());
             } else {
-              to += _to;
+              /* Not from me, just use orginal sender */
+              to += sender;
 
-              /* find me */
+              /* find the 'first' me */
               AddressList tos = focused_message->all_to_from ();
-              Address from;
 
               for (Address f : tos.addresses) {
                 if (astroid->accounts->is_me (f)) {
@@ -2469,11 +2507,10 @@ namespace Astroid {
                   break;
                 }
               }
-
-
-              main_window->add_mode (new EditMessage (main_window, to.str (), from.full_address ()));
             }
-
+	    main_window->add_mode (new EditMessage (main_window, to.str (),
+						    from.full_address (),
+						    cc.str(), bcc.str()));
           }
           return true;
         });
@@ -2645,6 +2682,38 @@ namespace Astroid {
           return true;
         });
 
+    multi_keys.register_key ("+", "thread_view.multi.tag",
+        "Tag",
+        [&] (Key) {
+          /* TODO: Move this into a function in a similar way as multi_key_handler
+           * for threadindex */
+
+
+          /* ask for tags */
+          main_window->enable_command (CommandBar::CommandMode::DiffTag,
+              "",
+              [&](ustring tgs) {
+                LOG (debug) << "tv: got difftags: " << tgs;
+
+                vector<refptr<NotmuchItem>> messages;
+
+                for (auto &ms : state) {
+                  refptr<Message> m = ms.first;
+                  MessageState    s = ms.second;
+                  if (s.marked) {
+                    messages.push_back (m->nmmsg);
+                  }
+                }
+
+                refptr<Action> ma = refptr<DiffTagAction> (DiffTagAction::create (messages, tgs));
+                if (ma) {
+                  main_window->actions->doit (ma);
+                }
+              });
+
+          return true;
+        });
+
     multi_keys.register_key ("C-y", "thread_view.multi.yank_mids",
         "Yank message id's",
         [&] (Key) {
@@ -2659,10 +2728,10 @@ namespace Astroid {
 
           ids = ids.substr (0, ids.length () - 2);
 
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           cp->set_text (ids);
 
-          LOG (info) << "tv: " << ids << " copied to primary clipboard.";
+          LOG (info) << "tv: " << ids << " copied to clipboard.";
 
           return true;
         });
@@ -2683,7 +2752,7 @@ namespace Astroid {
           /* remove last newline */
           y = y.substr (0, y.size () - 1);
 
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           cp->set_text (y);
 
           LOG (info) << "tv: yanked marked messages to clipobard.";
@@ -2713,7 +2782,7 @@ namespace Astroid {
             }
           }
 
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           cp->set_text (y);
 
           LOG (info) << "tv: yanked raw marked messages to clipobard.";
@@ -2840,7 +2909,7 @@ namespace Astroid {
 
     keys.register_key (Key (GDK_KEY_semicolon),
           "thread_view.multi",
-          "Apply action to marked threads",
+          "Apply action to marked messages",
           [&] (Key k) {
             if (any_of (state.begin(), state.end(),
                   [](std::pair<refptr<Message>, ThreadView::MessageState> ms)
@@ -2950,7 +3019,7 @@ namespace Astroid {
             return false;
           }
 
-          ustring tag_list = VectorUtils::concat_tags (focused_message->tags) + ", ";
+          ustring tag_list = VectorUtils::concat_tags (focused_message->tags) + " ";
 
           main_window->enable_command (CommandBar::CommandMode::Tag,
               "Change tags for message:",
@@ -2958,7 +3027,7 @@ namespace Astroid {
               [&](ustring tgs) {
                 LOG (debug) << "ti: got tags: " << tgs;
 
-                vector<ustring> tags = VectorUtils::split_and_trim (tgs, ",");
+                vector<ustring> tags = VectorUtils::split_and_trim (tgs, ",| ");
 
                 /* remove empty */
                 tags.erase (std::remove (tags.begin (), tags.end (), ""), tags.end ());
@@ -3031,26 +3100,26 @@ namespace Astroid {
         });
 
     keys.register_key ("y", "thread_view.yank",
-        "Yank current element or message text to primary clipboard",
+        "Yank current element or message text to clipboard",
         [&] (Key) {
           element_action (EYank);
           return true;
         });
 
     keys.register_key ("Y", "thread_view.yank_raw",
-        "Yank raw content of current element or message to primary clipboard",
+        "Yank raw content of current element or message to clipboard",
         [&] (Key) {
           element_action (EYankRaw);
           return true;
         });
 
     keys.register_key ("C-y", "thread_view.yank_mid",
-        "Yank the Message-ID of the focused message to primary clipboard",
+        "Yank the Message-ID of the focused message to clipboard",
         [&] (Key) {
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           cp->set_text (focused_message->mid);
 
-          LOG (info) << "tv: " << focused_message->mid << " copied to primary clipboard.";
+          LOG (info) << "tv: " << focused_message->mid << " copied to clipboard.";
 
           return true;
         });
@@ -3200,7 +3269,7 @@ namespace Astroid {
         focused_message->save ();
 
       } else if (a == EYankRaw) {
-        auto    cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+        auto    cp = Gtk::Clipboard::get (astroid->clipboard_target);
         ustring t  = "";
 
         auto d   = focused_message->raw_contents ();
@@ -3213,7 +3282,7 @@ namespace Astroid {
 
       } else if (a == EYank) {
 
-        auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+        auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
         ustring t;
 
         t = focused_message->viewable_text (false, true);
@@ -3230,7 +3299,7 @@ namespace Astroid {
           /* save message to */
           focused_message->save ();
         } else if (a == EYankRaw) {
-          auto    cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto    cp = Gtk::Clipboard::get (astroid->clipboard_target);
           ustring t  = "";
 
           auto d = focused_message->raw_contents ();
@@ -3243,7 +3312,7 @@ namespace Astroid {
 
         } else if (a == EYank) {
 
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           ustring t;
 
           t = focused_message->viewable_text (false, true);
@@ -3256,7 +3325,7 @@ namespace Astroid {
 
           refptr<Chunk> c = focused_message->get_chunk_by_id (
               state[focused_message].elements[state[focused_message].current_element].id);
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           ustring t = "";
 
           auto d   = c->contents ();
@@ -3271,7 +3340,7 @@ namespace Astroid {
 
           refptr<Chunk> c = focused_message->get_chunk_by_id (
               state[focused_message].elements[state[focused_message].current_element].id);
-          auto cp = Gtk::Clipboard::get (GDK_SELECTION_PRIMARY);
+          auto cp = Gtk::Clipboard::get (astroid->clipboard_target);
           ustring t;
 
           if (c->viewable) {
@@ -3287,7 +3356,7 @@ namespace Astroid {
           switch (state[focused_message].elements[state[focused_message].current_element].type) {
             case MessageState::ElementType::Attachment:
               {
-                if ((!edit_mode && a == EEnter) || a == EOpen) {
+                if (a == EEnter) {
                   /* open attachment */
 
                   refptr<Chunk> c = focused_message->get_chunk_by_id (
@@ -3314,7 +3383,7 @@ namespace Astroid {
               break;
             case MessageState::ElementType::Part:
               {
-                if ((!edit_mode && a == EEnter) || a == EOpen) {
+                if (a == EEnter) {
                   /* open part */
 
                   refptr<Chunk> c = focused_message->get_chunk_by_id (
@@ -3350,7 +3419,7 @@ namespace Astroid {
 
             case MessageState::ElementType::MimeMessage:
               {
-                if ((!edit_mode && a == EEnter) || a == EOpen) {
+                if (a == EEnter) {
                   /* open part */
                   refptr<Chunk> c = focused_message->get_chunk_by_id (
                       state[focused_message].elements[state[focused_message].current_element].id);

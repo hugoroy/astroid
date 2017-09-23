@@ -57,10 +57,17 @@ BOOST_AUTO_TEST_SUITE(Dates)
       GMimeMessage * m = a.message;
       g_object_ref (m);
 
+# if (GMIME_MAJOR_VERSION < 3)
       g_mime_message_set_date_as_string (m, d.c_str ());
+# else
+      GDateTime * dt = g_mime_utils_header_decode_date (d.c_str ());
+      g_mime_message_set_date (m, dt);
+# endif
 
       Message b (m);
 
+      LOG (test) << "date: " << b.date ();
+      LOG (test) << "date, asctime: " << b.date_asctime ();
       LOG (test) << "pretty_date: " << b.pretty_date ();
       LOG (test) << "pretty_verbose_date: " << b.pretty_verbose_date ();
       LOG (test) << "pretty_verbose_date (true): " << b.pretty_verbose_date (true);

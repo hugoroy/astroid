@@ -3,6 +3,7 @@
 
 # include <notmuch.h>
 # include <gmime/gmime.h>
+# include "utils/gmime/gmime-compat.h"
 # include <boost/filesystem.hpp>
 
 # include "astroid.hh"
@@ -165,7 +166,8 @@ namespace Astroid {
       return;
 
     } else {
-      GMimeStream   * stream  = g_mime_stream_file_new_for_path (fname.c_str(), "r");
+      GError *err = NULL; (void) (err); // not used in GMime 2.
+      GMimeStream   * stream  = g_mime_stream_file_open (fname.c_str(), "r", &err);
       g_mime_stream_file_set_owner (GMIME_STREAM_FILE(stream), TRUE);
       if (stream == NULL) {
         LOG (error) << "failed to open file: " << fname << " (unspecified error)";
@@ -185,7 +187,7 @@ namespace Astroid {
       }
 
       GMimeParser   * parser  = g_mime_parser_new_with_stream (stream);
-      GMimeMessage * _message = g_mime_parser_construct_message (parser);
+      GMimeMessage * _message = g_mime_parser_construct_message (parser, g_mime_parser_options_get_default ());
       load_message (_message);
 
       g_object_unref (_message); // is reffed in load_message
@@ -257,9 +259,8 @@ namespace Astroid {
     }
 
     /* read header fields */
-    c  = g_mime_message_get_sender (message);
-    if (c != NULL) sender = ustring (c);
-    else sender = "";
+    AddressList _s (g_mime_message_get_from (message));
+    sender = _s.str ();
 
     c = g_mime_message_get_subject (message);
     if (c != NULL) subject = ustring (c);
@@ -277,7 +278,12 @@ namespace Astroid {
     if (c != NULL) reply_to = ustring (c);
     else reply_to = "";
 
-    g_mime_message_get_date (message, &time, NULL);
+    GDateTime * dt = g_mime_message_get_date (message);
+    if (dt) {
+      time = g_date_time_to_unix (dt);
+    } else {
+      time = 0;
+    }
 
     root = refptr<Chunk>(new Chunk (g_mime_message_get_mime_part (message)));
   }
@@ -431,7 +437,14 @@ namespace Astroid {
 
       return s;
     } else {
-      return ustring (g_mime_message_get_date_as_string (message));
+      const char * c;
+      ustring date;
+
+      c = g_mime_object_get_header (GMIME_OBJECT(message), "Date");
+      if (c != NULL) date = ustring (c);
+      else date = "";
+
+      return date;
     }
   }
 
@@ -467,10 +480,10 @@ namespace Astroid {
       if (s.empty ()) {
         return internet_address_list_new ();
       } else {
-        return internet_address_list_parse_string (s.c_str());
+        return internet_address_list_parse (NULL, s.c_str());
       }
     } else {
-      return g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_TO);
+      return g_mime_message_get_addresses (message, GMIME_ADDRESS_TYPE_TO);
     }
   }
 
@@ -494,10 +507,10 @@ namespace Astroid {
       if (s.empty ()) {
         return internet_address_list_new ();
       } else {
-        return internet_address_list_parse_string (s.c_str());
+        return internet_address_list_parse (NULL, s.c_str());
       }
     } else {
-      return g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_CC);
+      return g_mime_message_get_addresses (message, GMIME_ADDRESS_TYPE_CC);
     }
   }
 
@@ -521,10 +534,10 @@ namespace Astroid {
       if (s.empty ()) {
         return internet_address_list_new ();
       } else {
-        return internet_address_list_parse_string (s.c_str());
+        return internet_address_list_parse (NULL, s.c_str());
       }
     } else {
-      return g_mime_message_get_recipients (message, GMIME_RECIPIENT_TYPE_BCC);
+      return g_mime_message_get_addresses (message, GMIME_ADDRESS_TYPE_BCC);
     }
   }
 
@@ -538,19 +551,19 @@ namespace Astroid {
           c = notmuch_message_get_header (msg, "Delivered-To");
           if (c != NULL && strlen(c)) {
             ustring s = c;
-            internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+            internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
           }
 
           c = notmuch_message_get_header (msg, "Envelope-To");
           if (c != NULL && strlen(c)) {
             ustring s = c;
-            internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+            internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
           }
 
           c = notmuch_message_get_header (msg, "X-Original-To");
           if (c != NULL && strlen(c)) {
             ustring s = c;
-            internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+            internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
           }
           });
 
@@ -560,19 +573,19 @@ namespace Astroid {
       c = g_mime_object_get_header (GMIME_OBJECT(message), "Delivered-To");
       if (c != NULL && strlen(c)) {
         ustring s = c;
-        internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+        internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
       }
 
       c = g_mime_object_get_header (GMIME_OBJECT(message), "Envelope-To");
       if (c != NULL && strlen(c)) {
         ustring s = c;
-        internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+        internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
       }
 
       c = g_mime_object_get_header (GMIME_OBJECT(message), "X-Original-To");
       if (c != NULL && strlen(c)) {
         ustring s = c;
-        internet_address_list_append(ret, internet_address_list_parse_string (s.c_str()));
+        internet_address_list_append(ret, internet_address_list_parse (NULL, s.c_str()));
       }
 
     }
@@ -648,6 +661,12 @@ namespace Astroid {
     _f = Utils::safe_fname (_f);
 
     return _f;
+  }
+
+  GMimeMessage * Message::decrypt () {
+    Crypto c ("application/pgp-encrypted");
+
+    return c.decrypt_message (message);
   }
 
   void Message::save () {
@@ -730,10 +749,10 @@ namespace Astroid {
     } else {
       /* write GMimeMessage */
 
-      FILE * MessageFile = fopen(tofname.c_str(), "w");
+      FILE * MessageFile = fopen (tofname.c_str(), "w");
       GMimeStream * stream = g_mime_stream_file_new(MessageFile);
-      g_mime_object_write_to_stream(GMIME_OBJECT(message), stream);
-      g_object_unref(stream);
+      g_mime_object_write_to_stream (GMIME_OBJECT(message), NULL, stream);
+      g_object_unref (stream);
 
     }
   }
@@ -753,7 +772,7 @@ namespace Astroid {
 
     GMimeStream * mem = g_mime_stream_mem_new ();
 
-    g_mime_object_write_to_stream (GMIME_OBJECT(message), mem);
+    g_mime_object_write_to_stream (GMIME_OBJECT(message), NULL, mem);
     g_mime_stream_flush (mem);
 
     GByteArray * res = g_mime_stream_mem_get_byte_array (GMIME_STREAM_MEM (mem));
