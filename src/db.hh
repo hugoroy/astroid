@@ -23,9 +23,10 @@
 # define notmuch_query_count_threads(x,y) notmuch_query_count_threads_st(x,y)
 # define notmuch_query_search_messages(x,y) notmuch_query_search_messages_st(x,y)
 # define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
-# if (LIBNOTMUCH_MINOR_VERSION < 1)
+# endif
+
+# ifndef HAVE_NOTMUCH_INDEX_FILE
 # define notmuch_database_index_file(d,f,o,m) notmuch_database_add_message(d,f,m)
-# endif 
 # endif
 
 namespace Astroid {
@@ -168,7 +169,7 @@ namespace Astroid {
        *  + There can only be one read-write db open at the time.
        *
        *  + It is not possible to have read-only db's open when there is a
-       *    read-only db open.
+       *    read-write db open.
        *
        * If you open one read-only db, and try to open a read-write db in the
        * same thread without closing the read-only db there will be a deadlock.
