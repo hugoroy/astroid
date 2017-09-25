@@ -23,6 +23,7 @@
 # include "utils/utils.hh"
 # include "utils/ustring_utils.hh"
 # include "utils/resource.hh"
+# include "utils/gmime/gmime-compat.h"
 # include "actions/onmessage.hh"
 
 # include "editor/plugin.hh"
@@ -34,12 +35,13 @@ using namespace boost::filesystem;
 namespace Astroid {
   int EditMessage::edit_id = 0;
 
-  EditMessage::EditMessage (MainWindow * mw, ustring _to, ustring _from) :
+  EditMessage::EditMessage (MainWindow * mw, ustring _to, ustring _from, ustring _cc, ustring _bcc) :
     EditMessage (mw, false) { // {{{
 
     in_read = false;
-    to = _to;
-
+    to  = _to;
+    cc  = _cc;
+    bcc = _bcc;
     if (!_from.empty ()) {
       set_from (Address (_from));
     }
@@ -460,7 +462,7 @@ namespace Astroid {
           auto row = *iter;
           Account * a = row[from_columns.account];
           if (a->has_signature) {
-            switch_signature->set_state (!switch_signature->get_active ());
+            switch_signature->set_active (!switch_signature->get_active ());
           }
           return true;
         });
@@ -566,7 +568,7 @@ namespace Astroid {
     if (!draft_msg) {
       /* make new message */
 
-      path ddir = path(c->account->save_drafts_to.c_str ());
+      path ddir = c->account->save_drafts_to;
       if (!is_directory(ddir)) {
         LOG (error) << "em: no draft directory specified!";
         set_warning ("draft could not be saved, no suitable draft directory for account specified.");
@@ -668,7 +670,7 @@ namespace Astroid {
     auto row = *iter;
     Account * a = row[from_columns.account];
     auto from_ia = internet_address_mailbox_new (a->name.c_str(), a->email.c_str());
-    ustring from = internet_address_to_string (from_ia, true);
+    ustring from = internet_address_to_string (from_ia, NULL, true);
 
     tmpfile.open (tmpfile_path.c_str(), std::fstream::out);
     tmpfile << "From: " << from << endl;
@@ -720,14 +722,14 @@ namespace Astroid {
     Account * a = (*it)[from_columns.account];
 
     switch_signature->set_sensitive (a->has_signature);
-    switch_signature->set_state (a->has_signature && a->signature_default_on);
+    switch_signature->set_active (a->has_signature && a->signature_default_on);
 
     encryption_revealer->set_reveal_child (a->has_gpg);
     switch_sign->set_sensitive (a->has_gpg);
     switch_encrypt->set_sensitive (a->has_gpg);
 
-    switch_encrypt->set_state (false);
-    switch_sign->set_state (a->has_gpg && a->always_gpg_sign);
+    switch_encrypt->set_active (false);
+    switch_sign->set_active (a->has_gpg && a->always_gpg_sign);
   }
 
   void EditMessage::switch_signature_set () {
@@ -966,16 +968,39 @@ namespace Astroid {
     if (sending_in_progress.load ()) return;
 
     if (action == ThreadView::ElementAction::EDelete) {
+
       /* delete attachment */
       auto e = thread_view->state[thread_view->focused_message].elements[id];
 
-      LOG (info) << "em: remove attachment: " << id << ", cid: " << e.id;
+      if (e.type == ThreadView::MessageState::ElementType::Attachment ||
+          e.type == ThreadView::MessageState::ElementType::MimeMessage )
+      {
+        LOG (info) << "em: remove attachment: " << id << ", cid: " << e.id;
 
-      attachments.erase (std::remove_if (attachments.begin (), attachments.end (), [&] (shared_ptr<ComposeMessage::Attachment> &a) { return a->chunk_id == e.id; }));
+        /* find attachment */
+        unsigned int attachment = 0;
 
-      prepare_message ();
-      read_edited_message ();
+        for (unsigned int i = 0;
+            i < thread_view->state[thread_view->focused_message].elements.size ();
+            i++)
+        {
+          auto xe = thread_view->state[thread_view->focused_message].elements[i];
+          if (xe.type == ThreadView::MessageState::ElementType::Attachment ||
+              xe.type == ThreadView::MessageState::ElementType::MimeMessage )
+          {
 
+            if (i == (unsigned int) id) {
+              attachments.erase (attachments.begin () + attachment);
+              break;
+            }
+
+            attachment++;
+          }
+        }
+
+        prepare_message ();
+        read_edited_message ();
+      }
     }
   }
 

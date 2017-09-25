@@ -3,13 +3,15 @@
 # include <sys/wait.h>
 
 # include <boost/filesystem.hpp>
-# include <gmime/gmime.h>
 # include <glib.h>
 # include <gio/gio.h>
 # include <thread>
 # include <mutex>
 # include <condition_variable>
 # include <chrono>
+
+# include <gmime/gmime.h>
+# include "utils/gmime/gmime-compat.h"
 
 # include "astroid.hh"
 # include "db.hh"
@@ -45,36 +47,33 @@ namespace Astroid {
     if (send_thread.joinable ()) send_thread.join ();
     g_object_unref (message);
 
-    //if (message_file != "") unlink(message_file.c_str());
-
     LOG (debug) << "cm: deinitialized.";
   }
 
   void ComposeMessage::set_from (Account *a) {
-    // some of this stuff is more or less ripped from ner
     account = a;
     from = internet_address_mailbox_new (a->name.c_str(), a->email.c_str());
-    g_mime_message_set_sender (message, internet_address_to_string (from, true));
+    g_mime_message_add_mailbox (message, GMIME_ADDRESS_TYPE_FROM, a->name.c_str (), a->email.c_str ());
   }
 
   void ComposeMessage::set_to (ustring _to) {
     to = _to;
-    g_mime_object_set_header (GMIME_OBJECT(message), "To", to.c_str());
+    g_mime_object_set_header (GMIME_OBJECT(message), "To", to.c_str(), NULL);
   }
 
   void ComposeMessage::set_cc (ustring _cc) {
     cc = _cc;
-    g_mime_object_set_header (GMIME_OBJECT(message), "Cc", cc.c_str());
+    g_mime_object_set_header (GMIME_OBJECT(message), "Cc", cc.c_str(), NULL);
   }
 
   void ComposeMessage::set_bcc (ustring _bcc) {
     bcc = _bcc;
-    g_mime_object_set_header (GMIME_OBJECT(message), "Bcc", bcc.c_str());
+    g_mime_object_set_header (GMIME_OBJECT(message), "Bcc", bcc.c_str(), NULL);
   }
 
   void ComposeMessage::set_subject (ustring _subject) {
     subject = _subject;
-    g_mime_message_set_subject (message, subject.c_str());
+    g_mime_message_set_subject (message, subject.c_str(), NULL);
   }
 
   void ComposeMessage::set_id (ustring _id) {
@@ -89,7 +88,7 @@ namespace Astroid {
           "References");
     } else {
       g_mime_object_set_header (GMIME_OBJECT(message), "References",
-          references.c_str());
+          references.c_str(), NULL);
     }
   }
 
@@ -101,7 +100,7 @@ namespace Astroid {
           "In-Reply-To");
     } else {
       g_mime_object_set_header (GMIME_OBJECT(message), "In-Reply-To",
-          inreplyto.c_str());
+          inreplyto.c_str(), NULL);
     }
   }
 
@@ -112,11 +111,14 @@ namespace Astroid {
 
     /* attached signatures are handled in ::finalize */
     if (include_signature && account && !account->signature_attach) {
-      LOG (debug) << "cm: adding inline signature..";
+      LOG (debug) << "cm: adding inline signature from: " << account->signature_file.c_str ();
       std::ifstream s (account->signature_file.c_str ());
       std::ostringstream sf;
       sf << s.rdbuf ();
       s.close ();
+      if (account->signature_separate) {
+	body_content += "-- \n";
+      }
       body_content += sf.str ();
     }
 
@@ -129,11 +131,9 @@ namespace Astroid {
     GMimeDataWrapper * contentWrapper = g_mime_data_wrapper_new_with_stream(contentStream, GMIME_CONTENT_ENCODING_DEFAULT);
 
     g_mime_part_set_content_encoding (messagePart, GMIME_CONTENT_ENCODING_QUOTEDPRINTABLE);
-    g_mime_part_set_content_object (messagePart, contentWrapper);
+    g_mime_part_set_content (messagePart, contentWrapper);
 
-    GMimeObject * part = g_mime_message_get_mime_part (message);
     g_mime_message_set_mime_part(message, GMIME_OBJECT(messagePart));
-    if (part) g_object_unref (part);
 
     g_object_unref(messagePart);
     g_object_unref(contentWrapper);
@@ -151,13 +151,13 @@ namespace Astroid {
     }
     set_from (from);
 
-    char * cto = internet_address_list_to_string (msg.to(), false);
+    char * cto = internet_address_list_to_string (msg.to(), NULL, false);
     if (cto) set_to (cto);
 
-    cto = internet_address_list_to_string (msg.cc(), false);
+    cto = internet_address_list_to_string (msg.cc(), NULL, false);
     if (cto) set_cc (cto);
 
-    cto = internet_address_list_to_string (msg.bcc(), false);
+    cto = internet_address_list_to_string (msg.bcc(), NULL, false);
     if (cto) set_bcc (cto);
 
     set_references (msg.references);
@@ -198,17 +198,12 @@ namespace Astroid {
 # endif
 
     if (!ua.empty ()) {
-      g_mime_object_set_header (GMIME_OBJECT(message), "User-Agent", ua.c_str());
+      g_mime_object_set_header (GMIME_OBJECT(message), "User-Agent", ua.c_str(), NULL);
     }
 
-
     /* add date to the message */
-    struct timeval timeValue;
-    struct timezone timeZone;
-
-    gettimeofday(&timeValue, &timeZone);
-
-    g_mime_message_set_date(message, timeValue.tv_sec, -100 * timeZone.tz_minuteswest / 60);
+    GDateTime * now = g_date_time_new_now_local ();
+    g_mime_message_set_date (message, now);
 
     /* Give the message an ID */
     g_mime_message_set_message_id(message, id.c_str());
@@ -222,7 +217,7 @@ namespace Astroid {
       add_attachment (sa);
     }
 
-    /* attachments (most of this copied from ner) */
+    /* attachments  */
     if (attachments.size() > 0)
     {
       GMimeMultipart * multipart = g_mime_multipart_new_with_subtype("mixed");
@@ -261,12 +256,12 @@ namespace Astroid {
           GMimeDataWrapper * data = g_mime_data_wrapper_new_with_stream (file_stream,
               GMIME_CONTENT_ENCODING_DEFAULT);
 
-          GMimeContentType * contentType = g_mime_content_type_new_from_string (a->content_type.c_str());
+          GMimeContentType * contentType = g_mime_content_type_parse (g_mime_parser_options_get_default (), a->content_type.c_str ());
 
           GMimePart * part =
             g_mime_part_new_with_type(g_mime_content_type_get_media_type (contentType),
             g_mime_content_type_get_media_subtype (contentType));
-          g_mime_part_set_content_object (part, data);
+          g_mime_part_set_content (part, data);
           g_mime_part_set_filename (part, a->name.c_str());
 
           if (a->dispostion_inline) {
@@ -317,7 +312,7 @@ namespace Astroid {
         g_object_unref (s_content);
       }
 
-      g_object_unref (content);
+      /* g_object_unref (content); */
 
       if (!encryption_success) {
         encryption_error = err->message;
@@ -359,10 +354,10 @@ namespace Astroid {
   {
     LOG (info) << "cm: sending (threaded)..";
     cancel_send_during_delay = false;
-    send_thread = std::thread (&ComposeMessage::send, this, true);
+    send_thread = std::thread (&ComposeMessage::send, this);
   }
 
-  bool ComposeMessage::send (bool output) {
+  bool ComposeMessage::send () {
 
     dryrun = astroid->config().get<bool>("astroid.debug.dryrun_sending");
 
@@ -408,12 +403,18 @@ namespace Astroid {
     }
     d_message_send_status ();
 
+    int stdin;
+    int stdout;
+    int stderr;
+
     /* Send the message */
     if (!dryrun) {
-      if (output)
-        LOG (warn) << "cm: sending message from account: " << account->full_address ();
+      LOG (warn) << "cm: sending message from account: " << account->full_address ();
 
       ustring send_command = account->sendmail;
+
+      LOG (debug) << "cm: sending message using command: " << send_command;
+
       vector<string> args = Glib::shell_parse_argv (send_command);
       try {
         Glib::spawn_async_with_pipes ("",
@@ -427,8 +428,7 @@ namespace Astroid {
                           &stderr
                           );
       } catch (Glib::SpawnError &ex) {
-        if (output)
-          LOG (error) << "cm: could not send message!";
+        LOG (error) << "cm: could not send message!";
 
         message_send_status_msg = "message could not be sent!";
         message_send_status_warn = true;
@@ -441,46 +441,64 @@ namespace Astroid {
       }
 
       /* connect channels */
-      c_ch_stdout = Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_out), stdout, Glib::IO_IN | Glib::IO_HUP);
-      c_ch_stderr = Glib::signal_io().connect (sigc::mem_fun (this, &ComposeMessage::log_err), stderr, Glib::IO_IN | Glib::IO_HUP);
-
-
+      refptr<Glib::IOChannel> ch_stdout;
+      refptr<Glib::IOChannel> ch_stderr;
       ch_stdout = Glib::IOChannel::create_from_fd (stdout);
       ch_stderr = Glib::IOChannel::create_from_fd (stderr);
 
-      FILE * sendMailPipe = fdopen (stdin, "w");
-
       /* write message to sendmail */
-      GMimeStream * sendMailStream = g_mime_stream_file_new(sendMailPipe);
-      g_mime_stream_file_set_owner(GMIME_STREAM_FILE(sendMailStream), false);
-      g_mime_object_write_to_stream(GMIME_OBJECT(message), sendMailStream);
-      g_mime_stream_flush (sendMailStream);
-
-      g_object_unref(sendMailStream);
-      fclose (sendMailPipe);
+      GMimeStream * stream = g_mime_stream_pipe_new (stdin);
+      g_mime_stream_pipe_set_owner (GMIME_STREAM_PIPE(stream), true); // causes stdin to be closed when stream is closed
+      g_mime_object_write_to_stream (GMIME_OBJECT(message), g_mime_format_options_get_default (), stream);
+      g_mime_stream_flush (stream);
+      g_object_unref (stream); // closes stdin
 
       /* wait for sendmail to finish */
       int status;
-      waitpid (pid, &status, 0);
+      pid_t wp = waitpid (pid, &status, 0);
+
+      if (wp == (pid_t)-1) {
+        LOG (error) << "cm: error when executing sendmail process: " << errno << ", unknown if message was sent.";
+      }
+
       g_spawn_close_pid (pid);
 
-      c_ch_stderr.disconnect();
-      c_ch_stdout.disconnect();
+      /* these read_to_end's are necessary to wait for the pipes to be closed, hopefully
+       * ensuring that any child processed forked by the sendmail process
+       * has also finished */
+      if (ch_stdout) {
+        Glib::ustring buf;
 
-      ::close (stdin);
+        ch_stdout->read_to_end(buf);
+        if (*(--buf.end()) == '\n') buf.erase (--buf.end());
+
+        if (!buf.empty ()) LOG (debug) << "sendmail: " << buf;
+        ch_stdout->close ();
+        ch_stdout.clear ();
+      }
+
+      if (ch_stderr) {
+        Glib::ustring buf;
+
+        ch_stderr->read_to_end(buf);
+        if (*(--buf.end()) == '\n') buf.erase (--buf.end());
+
+        if (!buf.empty ()) LOG (warn) << "sendmail: " << buf;
+        ch_stderr->close ();
+        ch_stderr.clear ();
+      }
+
       ::close (stdout);
       ::close (stderr);
 
-      if (status == 0)
+      if (status == 0 && wp != (pid_t)-1)
       {
-        if (output)
-          LOG (warn) << "cm: message sent successfully!";
+        LOG (warn) << "cm: message sent successfully!";
 
         if (account->save_sent) {
           using bfs::path;
-          save_to = path(account->save_sent_to) / path(id + ":2,");
-          if (output)
-            LOG (info) << "cm: saving message to: " << save_to;
+          save_to = account->save_sent_to / path(id + ":2,");
+          LOG (info) << "cm: saving message to: " << save_to;
 
           write (save_to.c_str());
         }
@@ -495,8 +513,7 @@ namespace Astroid {
         return true;
 
       } else {
-        if (output)
-          LOG (error) << "cm: could not send message!";
+        LOG (error) << "cm: could not send message: " << status << "!";
 
         message_send_status_msg = "message could not be sent!";
         message_send_status_warn = true;
@@ -509,8 +526,7 @@ namespace Astroid {
       }
     } else {
       ustring fname = "/tmp/" + id;
-      if (output)
-        LOG (warn) << "cm: sending disabled in config, message written to: " << fname;
+      LOG (warn) << "cm: sending disabled in config, message written to: " << fname;
       message_send_status_msg = "sending disabled, message written to: " + fname;
       message_send_status_warn = true;
       d_message_send_status ();
@@ -521,45 +537,6 @@ namespace Astroid {
       pid = 0;
       return false;
     }
-  }
-
-  bool ComposeMessage::log_out (Glib::IOCondition cond) {
-    if (cond == Glib::IO_HUP) {
-      ch_stdout.clear();
-      return false;
-    }
-
-    if ((cond & Glib::IO_IN) == 0) {
-      LOG (error) << "cm: invalid fifo response";
-    } else {
-      Glib::ustring buf;
-
-      ch_stdout->read_line(buf);
-      if (*(--buf.end()) == '\n') buf.erase (--buf.end());
-
-      LOG (debug) << "sendmail: " << buf;
-
-    }
-    return true;
-  }
-
-  bool ComposeMessage::log_err (Glib::IOCondition cond) {
-    if (cond == Glib::IO_HUP) {
-      ch_stderr.clear();
-      return false;
-    }
-
-    if ((cond & Glib::IO_IN) == 0) {
-      LOG (error) << "cm: invalid fifo response";
-    } else {
-      Glib::ustring buf;
-
-      ch_stderr->read_line(buf);
-      if (*(--buf.end()) == '\n') buf.erase (--buf.end());
-
-      LOG (warn) << "sendmail: " << buf;
-    }
-    return true;
   }
 
   /* signals */
@@ -614,7 +591,7 @@ namespace Astroid {
     free(temporaryFilePath);
 
     GMimeStream * stream = g_mime_stream_fs_new(fd);
-    g_mime_object_write_to_stream(GMIME_OBJECT(message), stream);
+    g_mime_object_write_to_stream (GMIME_OBJECT(message), g_mime_format_options_get_default (), stream);
     g_mime_stream_flush (stream);
 
     g_object_unref(stream);
@@ -630,7 +607,7 @@ namespace Astroid {
     FILE * MessageFile = fopen(fname.c_str(), "w");
 
     GMimeStream * stream = g_mime_stream_file_new(MessageFile);
-    g_mime_object_write_to_stream(GMIME_OBJECT(message), stream);
+    g_mime_object_write_to_stream (GMIME_OBJECT(message), g_mime_format_options_get_default (), stream);
     g_mime_stream_flush (stream);
 
     g_object_unref(stream);
@@ -729,7 +706,7 @@ namespace Astroid {
 
       contents = c->contents ();
 
-      const char * ct = g_mime_content_type_to_string (c->content_type);
+      const char * ct = g_mime_content_type_get_mime_type (c->content_type);
       if (ct != NULL) {
         content_type = std::string (ct);
       } else {

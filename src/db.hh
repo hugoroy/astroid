@@ -25,6 +25,10 @@
 # define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
 # endif
 
+# ifndef HAVE_NOTMUCH_INDEX_FILE
+# define notmuch_database_index_file(d,f,o,m) notmuch_database_add_message(d,f,m)
+# endif
+
 namespace Astroid {
   class NotmuchItem : public Glib::Object {
     public:
@@ -47,6 +51,7 @@ namespace Astroid {
 
       virtual ustring str () = 0;
       virtual bool    matches (std::vector<ustring> &k) = 0;
+      virtual bool    in_query (Db *, ustring) = 0;
   };
 
   /* the notmuch message object should get by on the db only */
@@ -70,6 +75,7 @@ namespace Astroid {
 
       ustring str () override;
       bool matches (std::vector<ustring> &k) override;
+      bool in_query (Db *, ustring) override;
 
     private:
       std::vector<ustring> get_tags (notmuch_message_t *);
@@ -97,6 +103,7 @@ namespace Astroid {
 
       ustring str () override;
       bool matches (std::vector<ustring> &k) override;
+      bool in_query (Db *, ustring) override;
 
     private:
       int check_total_messages (notmuch_thread_t *);
@@ -121,6 +128,7 @@ namespace Astroid {
       void on_message (ustring, std::function <void(notmuch_message_t *)>);
 
       bool thread_in_query (ustring, ustring);
+      bool message_in_query (ustring, ustring);
 
       unsigned long get_revision ();
 
@@ -161,7 +169,7 @@ namespace Astroid {
        *  + There can only be one read-write db open at the time.
        *
        *  + It is not possible to have read-only db's open when there is a
-       *    read-only db open.
+       *    read-write db open.
        *
        * If you open one read-only db, and try to open a read-write db in the
        * same thread without closing the read-only db there will be a deadlock.

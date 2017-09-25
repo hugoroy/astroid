@@ -22,6 +22,7 @@
 # include <boost/log/utility/setup/formatter_parser.hpp>
 # include <boost/date_time/posix_time/posix_time_types.hpp>
 # include <boost/log/expressions.hpp>
+# include <boost/log/trivial.hpp>
 # include <boost/log/support/date_time.hpp>
 
 # include "astroid.hh"
@@ -48,6 +49,7 @@
 
 /* gmime */
 # include <gmime/gmime.h>
+# include <utils/gmime/gmime-compat.h>
 
 using namespace std;
 using namespace boost::filesystem;
@@ -106,7 +108,7 @@ namespace Astroid {
     user_agent = ustring::compose ("astroid/%1 (https://github.com/astroidmail/astroid)", Astroid::version);
 
     /* gmime settings */
-    g_mime_init (0); // utf-8 is default
+    g_mime_init ();
 
     /* options */
     desc.add_options ()
@@ -118,6 +120,8 @@ namespace Astroid {
       ( "no-auto-poll", "do not poll automatically")
       ( "log,l", po::value<ustring>(), "log to file")
       ( "append-log,a", "append to log file")
+      ( "disable-log", "disable logging")
+      ( "log-level", po::value<ustring>(), "set logging level (trace, debug, info, warning, error, fatal)")
       ( "start-polling", "indicate that external polling (external notmuch db R/W operations) starts")
       ( "stop-polling", "indicate that external polling stops")
       ( "refresh", po::value<unsigned long>(), "refresh threads changed since lastmod")
@@ -153,6 +157,26 @@ namespace Astroid {
       exit (0);
 
     }
+
+    if (vm.count ("disable-log")) {
+      LOG (warn) << "disabling log";
+      logging::core::get()->set_logging_enabled (false);
+    } else if (vm.count ("log-level")) {
+      ustring llevel = vm["log-level"].as<ustring> ();
+      map<string, logging::trivial::severity_level> sevmap;
+
+      /* Map commandline string parameter to severity enum */
+      sevmap.insert (pair<string,logging::trivial::severity_level>("trace"  , logging::trivial::trace));
+      sevmap.insert (pair<string,logging::trivial::severity_level>("debug"  , logging::trivial::debug));
+      sevmap.insert (pair<string,logging::trivial::severity_level>("info"   , logging::trivial::info));
+      sevmap.insert (pair<string,logging::trivial::severity_level>("warning", logging::trivial::warning));
+      sevmap.insert (pair<string,logging::trivial::severity_level>("error"  , logging::trivial::error));
+      sevmap.insert (pair<string,logging::trivial::severity_level>("fatal"  , logging::trivial::fatal));
+
+      /* Non existing llevel in map will be silently ignored */
+      logging::core::get()->set_filter (logging::trivial::severity >= sevmap[llevel]);
+    }
+
 
     /* log to file */
     if (vm.count ("log")) {

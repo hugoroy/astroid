@@ -84,7 +84,7 @@ namespace Astroid {
 
       void build ();    // call to build message from content
       void finalize (); // call before sending
-      bool send (bool = true);
+      bool send ();
       void send_threaded ();
       bool cancel_sending ();
       ustring write_tmp (); // write message to tmpfile
@@ -102,16 +102,6 @@ namespace Astroid {
       /* sendmail process */
       bool cancel_send_during_delay = false;
       int pid;
-      int stdin;
-      int stdout;
-      int stderr;
-      refptr<Glib::IOChannel> ch_stdout;
-      refptr<Glib::IOChannel> ch_stderr;
-      sigc::connection c_ch_stdout;
-      sigc::connection c_ch_stderr;
-
-      bool log_out (Glib::IOCondition);
-      bool log_err (Glib::IOCondition);
 
       std::thread send_thread;
       std::mutex  send_cancel_m;

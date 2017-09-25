@@ -1,6 +1,5 @@
 # pragma once
 
-# include <vector>
 
 # include <notmuch.h>
 # include <gmime/gmime.h>
@@ -86,6 +85,8 @@ namespace Astroid {
       bool is_signed ();
       bool is_list_post ();
       bool has_tag (ustring);
+
+      GMimeMessage * decrypt ();
 
       void save ();
       void save_to (ustring);

@@ -1,6 +1,30 @@
-== **
+== v0.10.1 / 2017-09-24
+
+* Fix compilation errors against older versions of notmuch and gmime.
+
+== v0.10 / 2017-09-21
+
+* Support GMime 3 with backwards compatability with GMime 2. This orients us
+  towards GMime 3, and support for GMime 2 will be dropped in the future.
 
 * Attach messages by mids with 'A' in new emails.
+
+* Colorful tags in tag editor and in searching
+
+* Tags in the tag editor is now separated by spaces (comma still works)
+
+* New configuration option 'signature_separate' determines if inline
+  signatures will be separated from the message by a line containing '-- '.
+
+* Configurable query associated with account can be used to select account as
+  From: when replying or forwarding e-mail.
+
+* Default clipboard target: CLIPBOARD since this is the only one accessible by keyboard
+  in GTK.
+
+* Select target for yank operations with '"'
+
+* Track focus changes manually
 
 == v0.9.1 / 2017-04-30
 

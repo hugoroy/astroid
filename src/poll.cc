@@ -47,7 +47,6 @@ namespace Astroid {
   }
 
   void Poll::close () {
-    if (poll_thread.joinable ()) poll_thread.join ();
   }
 
   void Poll::start_polling () {
@@ -128,14 +127,10 @@ namespace Astroid {
       int r = kill (pid, SIGKILL);
 
       if (r == 0) {
-        LOG (warn) << "cm: poll script killed.";
+        LOG (warn) << "poll: poll script killed.";
       } else {
-        LOG (error) << "cm: could not kill poll script.";
+        LOG (error) << "poll: could not kill poll script.";
       }
-    }
-
-    if (poll_thread.joinable ()) {
-      poll_thread.detach ();
     }
   }
 
@@ -147,18 +142,13 @@ namespace Astroid {
 
     if (m_dopoll.try_lock ()) {
 
-      if (poll_thread.joinable () ) {
-        poll_thread.join ();
-      }
-
-
       {
         Db db (Db::DbMode::DATABASE_READ_ONLY);
         before_poll_revision = db.get_revision ();
       }
       LOG (debug) << "poll: revision before poll: " << before_poll_revision;
 
-      poll_thread = std::thread (&Poll::do_poll, this);
+      do_poll ();
 
       return true;
 
@@ -195,7 +185,7 @@ namespace Astroid {
                         Glib::SPAWN_DO_NOT_REAP_CHILD,
                         sigc::slot <void> (),
                         &pid,
-                        &stdin,
+                        NULL,
                         &stdout,
                         &stderr
                         );
@@ -214,32 +204,42 @@ namespace Astroid {
     lk.unlock ();
 
     /* connect channels */
-    c_ch_stdout = Glib::signal_io().connect (sigc::mem_fun (this, &Poll::log_out), stdout, Glib::IO_IN | Glib::IO_HUP);
-    c_ch_stderr = Glib::signal_io().connect (sigc::mem_fun (this, &Poll::log_err), stderr, Glib::IO_IN | Glib::IO_HUP);
-
     ch_stdout = Glib::IOChannel::create_from_fd (stdout);
     ch_stderr = Glib::IOChannel::create_from_fd (stderr);
 
-    /* wait for poll to finish */
-    int status;
-    waitpid (pid, &status, 0);
+    c_ch_stdout = Glib::signal_io().connect (sigc::mem_fun (this, &Poll::log_out), stdout, Glib::IO_IN | Glib::IO_HUP);
+    c_ch_stderr = Glib::signal_io().connect (sigc::mem_fun (this, &Poll::log_err), stderr, Glib::IO_IN | Glib::IO_HUP);
+
+    Glib::signal_child_watch ().connect (sigc::mem_fun (this, &Poll::poll_child_done), pid);
+  }
+
+  void Poll::poll_child_done (GPid pid, int child_status) {
     g_spawn_close_pid (pid);
 
     c_ch_stderr.disconnect();
     c_ch_stdout.disconnect();
 
-    ::close (stdin);
+    if (ch_stdout) {
+      ch_stdout->close ();
+      ch_stdout.clear ();
+    }
+
+    if (ch_stderr) {
+      ch_stderr->close ();
+      ch_stderr.clear ();
+    }
+
     ::close (stdout);
     ::close (stderr);
 
     chrono::duration<double> elapsed = chrono::steady_clock::now() - t0;
     last_poll = chrono::steady_clock::now ();
 
-    if (status != 0) {
+    if (child_status != 0) {
       LOG (error) << "poll: poll script did not exit successfully.";
     }
 
-    LOG (info) << "poll: done (time: " << elapsed.count() << " s) (status: " << status << ")";
+    LOG (info) << "poll: done (time: " << elapsed.count() << " s) (status: " << child_status << ")";
 
     pid = 0;
     set_poll_state (false);
@@ -251,6 +251,7 @@ namespace Astroid {
   bool Poll::log_out (Glib::IOCondition cond) {
     if (cond == Glib::IO_HUP) {
       ch_stdout.clear();
+      LOG (debug) << "poll: (stdout) got HUP";
       return false;
     }
 
@@ -271,6 +272,7 @@ namespace Astroid {
   bool Poll::log_err (Glib::IOCondition cond) {
     if (cond == Glib::IO_HUP) {
       ch_stderr.clear();
+      LOG (debug) << "poll: (stderr) got HUP";
       return false;
     }
 
