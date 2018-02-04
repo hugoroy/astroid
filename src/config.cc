@@ -49,7 +49,7 @@ namespace Astroid {
 
       path cur_path (current_path() );
 
-      std_paths.home = cur_path / path("test/test_home");
+      std_paths.home = cur_path / path("tests/test_home");
 
       LOG (debug) << "cf: using home and config_dir directory: " << std_paths.home.c_str ();
 
@@ -148,6 +148,7 @@ namespace Astroid {
 
       default_config.put ("accounts.charlie.signature_separate", false);
       default_config.put ("accounts.charlie.signature_file", "");
+      default_config.put ("accounts.charlie.signature_file_markdown", "");
       default_config.put ("accounts.charlie.signature_default_on", true);
       default_config.put ("accounts.charlie.signature_attach", false);
 
@@ -199,6 +200,8 @@ namespace Astroid {
 
     default_config.put ("editor.attachment_words", "attach");
     default_config.put ("editor.attachment_directory", "~");
+
+    default_config.put ("editor.markdown_processor", "marked");
 
     /* mail composition */
     default_config.put ("mail.reply.quote_line", "Excerpts from %1's message of %2:"); // %1 = author, %2 = pretty_verbose_date
@@ -280,8 +283,9 @@ namespace Astroid {
       config.put ("poll.interval", 0);
       config.put ("accounts.charlie.gpgkey", "gaute@astroidmail.bar");
       config.put ("mail.send_delay", 0);
-      std::string test_nmcfg_path = path(current_path() / path ("test/mail/test_config")).string();
+      std::string test_nmcfg_path = path(current_path() / path ("tests/mail/test_config")).string();
       boost::property_tree::read_ini (test_nmcfg_path, notmuch_config);
+      has_notmuch_config = true;
       return;
     }
 
@@ -328,9 +332,14 @@ namespace Astroid {
     run_paths.attach_dir = std_paths.attach_dir;
 
     /* read notmuch config */
-    boost::property_tree::read_ini (
-      config.get<std::string> ("astroid.notmuch_config"),
-      notmuch_config);
+    if (is_regular_file (config.get<std::string> ("astroid.notmuch_config"))) {
+      boost::property_tree::read_ini (
+        config.get<std::string> ("astroid.notmuch_config"),
+        notmuch_config);
+      has_notmuch_config = true;
+    } else {
+      has_notmuch_config = false;
+    }
   }
 
 
@@ -394,7 +403,7 @@ namespace Astroid {
       LOG (warn) << "config: astroid now reads standard notmuch options from notmuch config, it is configured through: 'astroid.notmuch_config' and is now set to the default: ~/.notmuch-config. please validate!";
     }
 
-    if (version < 9) {
+    if (version < 10) {
       /* check accounts signature */
       ptree apt = config.get_child ("accounts");
 
@@ -463,6 +472,18 @@ namespace Astroid {
           } catch (const boost::property_tree::ptree_bad_path &ex) {
 
             ustring key = ustring::compose ("accounts.%1.select_query", kv.first);
+            config.put (key.c_str (), "");
+          }
+        }
+
+        if (version < 10) {
+          try {
+
+            ustring sto = kv.second.get<string> ("signature_file_markdown");
+
+          } catch (const boost::property_tree::ptree_bad_path &ex) {
+
+            ustring key = ustring::compose ("accounts.%1.signature_file_markdown", kv.first);
             config.put (key.c_str (), "");
           }
         }

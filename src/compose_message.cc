@@ -107,7 +107,7 @@ namespace Astroid {
   void ComposeMessage::build () {
     LOG (debug) << "cm: build..";
 
-    std::string body_content(body.str());
+    std::string text_body_content(body.str());
 
     /* attached signatures are handled in ::finalize */
     if (include_signature && account && !account->signature_attach) {
@@ -117,12 +117,17 @@ namespace Astroid {
       sf << s.rdbuf ();
       s.close ();
       if (account->signature_separate) {
-	body_content += "-- \n";
+	text_body_content += "-- \n";
       }
-      body_content += sf.str ();
+      text_body_content += sf.str ();
     }
 
-    GMimeStream * contentStream = g_mime_stream_mem_new_with_buffer(body_content.c_str(), body_content.size());
+    markdown_success = false;
+    markdown_error   = "";
+
+
+    /* create text part */
+    GMimeStream * contentStream = g_mime_stream_mem_new_with_buffer(text_body_content.c_str(), text_body_content.size());
     GMimePart * messagePart = g_mime_part_new_with_type ("text", "plain");
 
     g_mime_object_set_content_type_parameter ((GMimeObject *) messagePart, "charset", astroid->config().get<string>("editor.charset").c_str());
@@ -133,11 +138,118 @@ namespace Astroid {
     g_mime_part_set_content_encoding (messagePart, GMIME_CONTENT_ENCODING_QUOTEDPRINTABLE);
     g_mime_part_set_content (messagePart, contentWrapper);
 
-    g_mime_message_set_mime_part(message, GMIME_OBJECT(messagePart));
-
-    g_object_unref(messagePart);
     g_object_unref(contentWrapper);
     g_object_unref(contentStream);
+
+
+    if (markdown) {
+      std::string md_body_content(body.str());
+
+      /* attached signatures are handled in ::finalize */
+      if (include_signature && account && !account->signature_attach && account->has_signature_markdown) {
+        LOG (debug) << "cm: adding inline signature (markdown) from: " << account->signature_file_markdown.c_str ();
+        std::ifstream s (account->signature_file_markdown.c_str ());
+        std::ostringstream sf;
+        sf << s.rdbuf ();
+        s.close ();
+        if (account->signature_separate) {
+    md_body_content += "-- \n";
+        }
+        md_body_content += sf.str ();
+      }
+
+      GMimePart * text = messagePart;
+      GMimeMultipart * mp = g_mime_multipart_new_with_subtype ("alternative");
+
+      /* add text part */
+      g_mime_multipart_add (mp, GMIME_OBJECT(messagePart));
+      messagePart = GMIME_PART(mp);
+
+      /* construct HTML part */
+      GMimePart * html = g_mime_part_new_with_type ("text", "html");
+      g_mime_object_set_content_type_parameter ((GMimeObject *) html, "charset", astroid->config().get<string>("editor.charset").c_str());
+      g_mime_object_set_content_type_parameter ((GMimeObject *) html, "format", "flowed");
+
+      GMimeStream * contentStream;
+
+      /* pipe through markdown to html generator */
+      int pid;
+      int stdin;
+      int stdout;
+      int stderr;
+      markdown_success = true;
+      vector<string> args = Glib::shell_parse_argv (astroid->config().get<string>("editor.markdown_processor"));
+      try {
+        Glib::spawn_async_with_pipes ("",
+                          args,
+                          Glib::SPAWN_DO_NOT_REAP_CHILD |
+                          Glib::SPAWN_SEARCH_PATH,
+                          sigc::slot <void> (),
+                          &pid,
+                          &stdin,
+                          &stdout,
+                          &stderr
+                          );
+
+        refptr<Glib::IOChannel> ch_stdin;
+        refptr<Glib::IOChannel> ch_stdout;
+        refptr<Glib::IOChannel> ch_stderr;
+        ch_stdin  = Glib::IOChannel::create_from_fd (stdin);
+        ch_stdout = Glib::IOChannel::create_from_fd (stdout);
+        ch_stderr = Glib::IOChannel::create_from_fd (stderr);
+
+        ch_stdin->write (md_body_content);
+        ch_stdin->close ();
+
+        ustring _html;
+        ch_stdout->read_to_end (_html);
+        ch_stdout->close ();
+
+
+        ustring _err;
+        ch_stderr->read_to_end (_err);
+        ch_stderr->close ();
+
+        if (!_err.empty ()) {
+          LOG (error) << "cm: md: " << _err;
+          markdown_error   = _err;
+          markdown_success = false;
+        } else {
+
+          LOG (debug) << "cm: md: got html: " << _html;
+
+          contentStream = g_mime_stream_mem_new_with_buffer(_html.c_str(), _html.size());
+        }
+
+      } catch (Glib::SpawnError &ex) {
+        LOG (error) << "cm: md: failed to spawn markdown processor: " << ex.what ();
+
+        markdown_success = false;
+        markdown_error   = "Failed to spawn markdown processor: " + ex.what();
+      }
+
+      if (markdown_success) {
+        /* add output to html part */
+        GMimeDataWrapper * contentWrapper = g_mime_data_wrapper_new_with_stream(contentStream, GMIME_CONTENT_ENCODING_DEFAULT);
+
+        g_mime_part_set_content_encoding (html, GMIME_CONTENT_ENCODING_QUOTEDPRINTABLE);
+        g_mime_part_set_content (html, contentWrapper);
+
+        g_object_unref(contentWrapper);
+        g_object_unref(contentStream);
+
+        /* add html part to message */
+        g_mime_multipart_add (mp, GMIME_OBJECT (html));
+        g_object_unref (text);
+      } else {
+        /* revert to only text part */
+        g_object_unref (messagePart);
+        messagePart = text;
+      }
+    }
+
+    g_mime_message_set_mime_part(message, GMIME_OBJECT(messagePart));
+    g_object_unref(messagePart);
   }
 
   void ComposeMessage::load_message (ustring _mid, ustring fname) {
@@ -202,8 +314,7 @@ namespace Astroid {
     }
 
     /* add date to the message */
-    GDateTime * now = g_date_time_new_now_local ();
-    g_mime_message_set_date (message, now);
+    g_mime_message_set_date_now (message);
 
     /* Give the message an ID */
     g_mime_message_set_message_id(message, id.c_str());

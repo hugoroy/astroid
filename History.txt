@@ -1,3 +1,15 @@
+==
+
+* Move to the CMake build system. Meson is deprecated.
+* Allow HTML parts to be composed using Markdown.
+* Use color to indicate whether a message is marked in thread-index.
+
+== v0.10.2 / 2017-10-11
+
+* Fix build issues on Mac OS.
+* Gmime 2 used weird timezone for sent email.
+* Add Meson build system as alternative.
+
 == v0.10.1 / 2017-09-24
 
 * Fix compilation errors against older versions of notmuch and gmime.

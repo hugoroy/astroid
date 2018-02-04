@@ -1,7 +1,11 @@
 # include <iostream>
-# include <boost/filesystem.hpp>
+# include <limits.h>
+# include <stdlib.h>
 
 # include <notmuch.h>
+
+// Build with: g++ test_notmuch_standalone.cc -o test_notmuch_standalone -lnotmuch
+
 
 /* there was a bit of a round-dance of with the _st versions of these returning
  * to the old name, but with different signature */
@@ -12,27 +16,28 @@
 # define notmuch_query_count_messages(x,y) notmuch_query_count_messages_st(x,y)
 # endif
 
-namespace bfs = boost::filesystem;
 using std::cout;
 using std::endl;
 
 int main () {
-  bfs::path path_db = bfs::absolute (bfs::path("./test/mail/test_mail"));
+  char * path_db = realpath ("./tests/mail/test_mail", NULL);
 
   notmuch_database_t * nm_db;
 
   notmuch_status_t s =
     notmuch_database_open (
-      path_db.c_str(),
+      path_db,
       notmuch_database_mode_t::NOTMUCH_DATABASE_MODE_READ_ONLY,
       &nm_db);
 
+  (void) (s);
 
   cout << "db: running test query.." << endl;
   notmuch_query_t * q = notmuch_query_create (nm_db, "*");
 
   unsigned int c;
   notmuch_status_t st = notmuch_query_count_threads (q, &c); // destructive
+  (void) (st);
   notmuch_query_destroy (q);
   q = notmuch_query_create (nm_db, "*");
 
@@ -104,7 +109,7 @@ int main () {
   notmuch_database_t * nm_db2;
 
   s = notmuch_database_open (
-      path_db.c_str(),
+      path_db,
       notmuch_database_mode_t::NOTMUCH_DATABASE_MODE_READ_WRITE,
       &nm_db2);
 
@@ -148,7 +153,7 @@ int main () {
 
   /* re-add unread tag */
   s = notmuch_database_open (
-      path_db.c_str(),
+      path_db,
       notmuch_database_mode_t::NOTMUCH_DATABASE_MODE_READ_WRITE,
       &nm_db2);
 

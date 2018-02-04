@@ -43,6 +43,7 @@ namespace Astroid {
 
       Gtk::ComboBox *from_combo, *reply_mode_combo;
       Gtk::Switch   *switch_signature;
+      Gtk::Switch   *switch_markdown;
       Gtk::Switch   *switch_encrypt;
       Gtk::Switch   *switch_sign;
       Gtk::Revealer *fields_revealer;
@@ -99,6 +100,7 @@ namespace Astroid {
       ComposeMessage * setup_message ();
       void             finalize_message (ComposeMessage *);
       ComposeMessage * make_message ();
+      ComposeMessage * make_draft_message ();
 
       ComposeMessage * sending_message;
       std::atomic<bool> sending_in_progress;
@@ -154,6 +156,8 @@ namespace Astroid {
 
       bool message_sent = false;
       void lock_message_after_send ();
+
+      ComposeMessage * make_message (bool draft);
 
     private:
       void on_from_combo_changed ();

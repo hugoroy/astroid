@@ -33,33 +33,38 @@ $ git clone https://github.com/astroidmail/astroid.git
 ### compiling
 
 ```sh
-$ scons     # (use `-j 8` to parallelize compilation)
+$ cd astroid
+$ cmake -H. -Bbuild -GNinja # to use the ninja backend
+$ cmake --build build
 ```
+
+run `cmake -DOPTION=VALUE ..` from `build/` to set any build options (list with `cmake -L`). Subsequent builds can be done by running `ninja` (or `make` if you are using that) from the build directory.
 
 to run the tests do:
 
 ```sh
-$ scons test
+$ cd build
+$ ctest
 ```
 
 ### installing
 
 Configure with a prefix and install:
 ```sh
-$ scons -j 8 --prefix=/usr build
-$ scons --prefix=/usr install
+$ cmake -H. -Bbuild -GNinja -DCMAKE_INSTALL_PREFIX=/usr/local
+$ cmake --build build --target install
 ```
 
-this will install the `astroid` binary into `/usr/bin/`, and data files into `/usr/share/astroid/`. refer to the [installing section](https://github.com/astroidmail/astroid/wiki/Compiling-and-Installing) in the wiki for more information.
+this will install the `astroid` binary into `/usr/local/bin/`, and data files into `/usr/local/share/astroid/`. Refer to the [installing section](https://github.com/astroidmail/astroid/wiki/Compiling-and-Installing) in the wiki for more information.
 
 ### configuration
 
-The initial run of `astroid` will create a new configuration file in `$XDG_CONFIG_HOME/astroid` (normally: `~/.config/astroid/`. refer to the [configuration section](https://github.com/astroidmail/astroid/wiki/Astroid-setup) in the wiki for more information.
+The initial run of `astroid` will create a new configuration file in `$XDG_CONFIG_HOME/astroid` (normally: `~/.config/astroid/`). Refer to the [configuration section](https://github.com/astroidmail/astroid/wiki/Astroid-setup) in the wiki for more information.
 
 ### execution and usage
 
 ```sh
-$ ./astroid
+$ ./build/astroid # to run from source repository
 ```
 
 press `?` to get a list of available key bindings in the current mode, navigate up and down using `j` and `k`. refer to the [usage section](https://github.com/astroidmail/astroid/wiki#usage) in the wiki for more information on usage and customization.
@@ -97,7 +102,6 @@ See [LICENSE.md](./LICENSE.md) for licensing information.
 [gmime]: http://spruce.sourceforge.net/gmime/
 [webkit]: http://webkitgtk.org/
 [GPL]: https://www.gnu.org/copyleft/gpl.html
-[scons]: http://www.scons.org/
 [git]: http://git-scm.com/
 [C++11]: http://en.wikipedia.org/wiki/C%2B%2B11
 [boost]: http://www.boost.org/
