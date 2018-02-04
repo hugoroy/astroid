@@ -30,7 +30,7 @@
 
 /* Fonts */
 @if not(global-variable-exists(font-base-size)) {
-  $font-base-size: 16px !global;
+  $font-base-size: 13px !global;
 }
 
 @if not(global-variable-exists(font-mono)) {
@@ -102,7 +102,7 @@
         display: none !important;
     }
 
-    .email.print .tags {
+    .email.rint .tags {
         display: none !important;
     }
 
@@ -387,6 +387,7 @@ body:not(.nohide) .email.hide .header_container .avatar {
     padding-top: 25px;
     overflow-x: auto;
     overflow-y: hidden;
+    line-height: 19px;
 
     .body_part a[href*="//"] {
 	word-break: break-all;
@@ -484,9 +485,11 @@ body:not(.nohide) .email.hide .header_container .avatar {
         display: none;
     }
     .email:not(.hide) .email_warning.show,
-    .email:not(.hide) .email_info.show,
-    body:not(.nohide) .email.hide .header_container .subject {
+    .email:not(.hide) .email_info.show {
         display: block;
+    }
+    body:not(.nohide) .email.hide .header_container .subject {
+        display: none;
     }
     body:not(.nohide) .email:not(:only-of-type) .header_container,
     body:not(.nohide) .email .email .header_container {
@@ -783,8 +786,7 @@ body.nohide .email .compressed_note > span {
     color: darken( $sibling-color, 80% );
 
     .message {
-	padding-top: 6px;
-	padding-bottom: 6px;
+	padding: 6px;
 	font-size: 90%;
     }
 
@@ -806,7 +808,7 @@ body.nohide .email .compressed_note > span {
     color: darken( $mime-color, 80% );
 
     &.focused/*, &:hover /* click not supported yet */ {
-	background-color: lighten( $mime-color, 1% );
+	background-color: darken( $mime-color, 15% );
 	.message {
 	    border-color: darken( $mime-color, 50% );
 	}

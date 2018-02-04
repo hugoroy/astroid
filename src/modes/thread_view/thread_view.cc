@@ -2667,7 +2667,6 @@ namespace Astroid {
 
             astroid->actions->doit (refptr<Action> (new CmdAction (
               Cmd ("thread_view.run", cmd), focused_message->tid, focused_message->mid)));
-
             }
           return true;
         });
