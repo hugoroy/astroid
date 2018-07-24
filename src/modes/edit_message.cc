@@ -104,6 +104,8 @@ namespace Astroid {
 
     tmpfile_path = astroid->standard_paths ().runtime_dir;
 
+    gpgenabled = astroid->config ("crypto").get<bool> ("gpg.enabled");
+
     set_label ("New message");
 
     path ui = Resource (false, "ui/edit-message.glade").get_path ();
@@ -208,8 +210,7 @@ namespace Astroid {
     }
 # endif
 
-    thread_view = Gtk::manage(new ThreadView(main_window));
-    thread_view->edit_mode = true;
+    thread_view = Gtk::manage(new ThreadView(main_window, true));
     //thread_rev->add (*thread_view);
     editor_box->pack_start (*thread_view, false, false, 2);
 
@@ -491,7 +492,7 @@ namespace Astroid {
           auto row = *iter;
           Account * a = row[from_columns.account];
 
-          if (a->has_gpg) {
+          if (gpgenabled && a->has_gpg) {
             if (!switch_encrypt->get_active () && !switch_sign->get_active ()) {
               switch_encrypt->set_active (false);
               switch_sign->set_active (true);
@@ -736,12 +737,12 @@ namespace Astroid {
     switch_signature->set_sensitive (a->has_signature);
     switch_signature->set_active (a->has_signature && a->signature_default_on);
 
-    encryption_revealer->set_reveal_child (a->has_gpg);
-    switch_sign->set_sensitive (a->has_gpg);
-    switch_encrypt->set_sensitive (a->has_gpg);
+    encryption_revealer->set_reveal_child (gpgenabled && a->has_gpg);
+    switch_sign->set_sensitive (gpgenabled && a->has_gpg);
+    switch_encrypt->set_sensitive (gpgenabled && a->has_gpg);
 
     switch_encrypt->set_active (false);
-    switch_sign->set_active (a->has_gpg && a->always_gpg_sign);
+    switch_sign->set_active (gpgenabled && a->has_gpg && a->always_gpg_sign);
   }
 
   void EditMessage::switch_signature_set () {
@@ -1152,6 +1153,12 @@ namespace Astroid {
     message_sending_status_icon.set (pixbuf);
     sending_in_progress.store (false);
 
+    if (result_from_sender && (astroid->config().get<bool> ("mail.close_on_success"))) {
+      LOG (info) << "cm: sending successful, auto-closing window";
+      close (true);
+    }
+
+
     delete sending_message;
 
     emit_message_sent_attempt (result_from_sender);
@@ -1188,7 +1195,7 @@ namespace Astroid {
     }
     c->markdown = switch_markdown->get_active ();
 
-    if (c->account->has_gpg) {
+    if (gpgenabled && c->account->has_gpg) {
       c->encrypt = switch_encrypt->get_active ();
       c->sign    = switch_sign->get_active ();
     }

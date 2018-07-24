@@ -403,5 +403,29 @@ namespace Astroid {
 
     return false;
   }
+
+  std::string PluginManager::ThreadViewExtension::filter_part (
+      std::string input_text,
+      std::string input_html,
+      std::string mime_type,
+      bool        is_patch) {
+    if (!active || astroid->plugin_manager->disabled) return input_html;
+
+    for (PeasPluginInfo * p : astroid->plugin_manager->thread_view_plugins) {
+      PeasExtension * pe = peas_extension_set_get_extension (extensions, p);
+
+      if (pe) {
+
+        char * out = astroid_threadview_activatable_filter_part (ASTROID_THREADVIEW_ACTIVATABLE(pe), input_text.c_str (), input_html.c_str (), mime_type.c_str (), is_patch);
+
+        if (out != NULL) {
+          input_html = std::string (out);
+          return input_html;
+        }
+      }
+    }
+
+    return input_html;
+  }
 }
 

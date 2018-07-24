@@ -1,6 +1,5 @@
 # pragma once
 
-
 # include <notmuch.h>
 # include <gmime/gmime.h>
 
@@ -18,11 +17,12 @@ namespace Astroid {
       Message (ustring _mid, ustring _fname);
       Message (notmuch_message_t *, int _level);
       Message (GMimeMessage *);
-      Message (refptr<NotmuchMessage>);
+      Message (refptr<NotmuchMessage>, int _level = 0);
       ~Message ();
 
       ustring fname;
       ustring mid;
+      ustring safe_mid ();
       ustring tid;
       refptr<NotmuchMessage> nmmsg;
       bool    in_notmuch;
@@ -76,6 +76,8 @@ namespace Astroid {
        * mime_messages (), but in the correct order. */
       std::vector<refptr<Chunk>> mime_messages_and_attachments ();
 
+      std::vector<refptr<Chunk>> all_parts ();
+
       refptr<Glib::ByteArray> contents ();
       refptr<Glib::ByteArray> raw_contents ();
 
@@ -94,6 +96,7 @@ namespace Astroid {
       /* message changed signal */
       typedef enum {
         MESSAGE_TAGS_CHANGED,
+        MESSAGE_REMOVED,
       } MessageChangedEvent;
 
       typedef sigc::signal <void, Db *, Message *, MessageChangedEvent> type_signal_message_changed;
@@ -136,6 +139,8 @@ namespace Astroid {
     public:
       refptr<NotmuchThread> thread;
       std::vector<refptr<Message>> messages;
+
+      std::vector<refptr<Message>> messages_by_time ();
 
       void load_messages (Db *);
       void add_message (ustring);

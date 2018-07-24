@@ -39,7 +39,7 @@ namespace Astroid {
       bool    attachment;
       bool    flagged;
 
-      virtual void refresh (Db *) = 0;
+      virtual bool refresh (Db *) = 0;
 
       std::vector<ustring>  tags;
       bool                  has_tag (ustring);
@@ -66,7 +66,7 @@ namespace Astroid {
       ustring filename = "";
 
       void load (notmuch_message_t *);
-      void refresh (Db *) override;
+      bool refresh (Db *) override;
       void refresh (notmuch_message_t *);
 
       bool remove_tag (Db *, ustring)   override;
@@ -95,7 +95,7 @@ namespace Astroid {
       std::vector<std::tuple<ustring,bool>> authors;
 
       void load (notmuch_thread_t *);
-      void refresh (Db *) override;
+      bool refresh (Db *) override;
 
       bool remove_tag (Db *, ustring) override;
       bool add_tag (Db *, ustring) override;
@@ -104,6 +104,8 @@ namespace Astroid {
       ustring str () override;
       bool matches (std::vector<ustring> &k) override;
       bool in_query (Db *, ustring) override;
+
+      std::vector<std::pair<int, refptr<NotmuchMessage>>> messages (Db *);
 
     private:
       int check_total_messages (notmuch_thread_t *);

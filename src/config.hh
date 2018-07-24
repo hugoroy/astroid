@@ -57,12 +57,12 @@ namespace Astroid {
       ptree notmuch_config;
       bool has_notmuch_config;
 
-      const int CONFIG_VERSION = 10;
+      const int CONFIG_VERSION = 11;
 
     private:
       ptree setup_default_config (bool);
+      void  setup_default_initial_config (ptree &conf, bool accounts = true, bool startup = true);
 
-      /* TODO: split into utils/ somewhere.. */
       /* merge of property trees */
 
       // from http://stackoverflow.com/questions/8154107/how-do-i-merge-update-a-boostproperty-treeptree

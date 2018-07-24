@@ -3,6 +3,8 @@
 # include <gtkmm.h>
 # include <gtkmm/widget.h>
 # include <gtkmm/notebook.h>
+# include <pangomm/fontdescription.h>
+# include <pango/pango.h>
 
 # ifndef DISABLE_VTE
 # include <vte/vte.h>
@@ -509,7 +511,23 @@ namespace Astroid {
     gtk_container_add (GTK_CONTAINER(rev_terminal->gobj ()), vte_term);
     rev_terminal->show_all ();
 
-    vte_terminal_set_size (VTE_TERMINAL (vte_term), 1, 10);
+    /* load font settings */
+    ustring font_desc_string = astroid->config("terminal").get<string> ("font_description");
+
+    if (font_desc_string == "" || font_desc_string == "default") {
+      auto settings = Gio::Settings::create ("org.gnome.desktop.interface");
+      font_desc_string = settings->get_string ("monospace-font-name");
+    }
+
+    auto font_description = Pango::FontDescription (font_desc_string);
+
+    /* https://developer.gnome.org/pangomm/stable/classPango_1_1FontDescription.html#details */
+    if (font_description.get_size () == 0) {
+      LOG (warn) << "terminal.font_description: no size specified, expect weird behaviour.";
+    }
+
+    vte_terminal_set_font (VTE_TERMINAL(vte_term), font_description.gobj ());
+    vte_terminal_set_size (VTE_TERMINAL (vte_term), 1, astroid->config("terminal").get<int> ("height"));
 
     /* start shell */
     char * shell = vte_get_user_shell ();
@@ -612,10 +630,9 @@ namespace Astroid {
     /* focus out */
     ungrab_active ();
 
-    /* remove all modes */
-    /* for (int n = notebook.get_n_pages(); n > 0; n--) { */
-    /*   close_page (true); */
-    /* } */
+    for (int c = 0; c < notebook.get_n_pages(); c++) {
+      ((Mode*) notebook.get_nth_page (c))->pre_close ();
+    }
 
     close (); // Gtk::Window::close ()
   }

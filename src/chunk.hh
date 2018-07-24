@@ -13,7 +13,9 @@
 
 namespace Astroid {
   class Chunk : public Glib::Object {
-    private:
+    friend Crypto;
+
+    protected:
       static std::atomic<uint> nextid;
 
     public:
@@ -52,7 +54,7 @@ namespace Astroid {
         { "html" , g_mime_content_type_new ("text", "html") }
       };
 
-      GMimeContentType * preferred_type = viewable_types["plain"];
+      GMimeContentType * preferred_type;
 
       refptr<Crypto> crypt;
 

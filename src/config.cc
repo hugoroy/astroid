@@ -11,6 +11,7 @@
 # include "config.hh"
 # include "poll.hh"
 # include "utils/utils.hh"
+# include "utils/resource.hh"
 
 using namespace std;
 using namespace boost::filesystem;
@@ -112,6 +113,46 @@ namespace Astroid {
     std_paths.attach_dir = std_paths.home;
   }
 
+  void  Config::setup_default_initial_config (ptree &conf, bool accounts, bool startup) {
+    /* initial default options - these are only set when the sections are
+     * completely missing.
+     */
+
+    if (accounts) {
+      /* default example account:
+       *
+       * note: AccountManager will complain if there are no accounts defined.
+       *
+       */
+      conf.put ("accounts.charlie.name", "Charlie Root");
+      conf.put ("accounts.charlie.email", "root@localhost");
+      conf.put ("accounts.charlie.gpgkey", "");
+      conf.put ("accounts.charlie.always_gpg_sign", false);
+      conf.put ("accounts.charlie.sendmail", "msmtp -i -t");
+      conf.put ("accounts.charlie.default", true);
+      conf.put ("accounts.charlie.save_sent", false);
+      conf.put ("accounts.charlie.save_sent_to",
+          "/home/root/Mail/sent/cur/");
+      conf.put ("accounts.charlie.additional_sent_tags", "");
+
+      conf.put ("accounts.charlie.save_drafts_to",
+          "/home/root/Mail/drafts/");
+
+      conf.put ("accounts.charlie.signature_separate", false);
+      conf.put ("accounts.charlie.signature_file", "");
+      conf.put ("accounts.charlie.signature_file_markdown", "");
+      conf.put ("accounts.charlie.signature_default_on", true);
+      conf.put ("accounts.charlie.signature_attach", false);
+
+      conf.put ("accounts.charlie.select_query", "");
+    }
+
+    if (startup) {
+      /* default searches, also only set if initial */
+      conf.put("startup.queries.inbox", "tag:inbox");
+    }
+  }
+
   ptree Config::setup_default_config (bool initial) {
     ptree default_config;
     default_config.put ("astroid.config.version", CONFIG_VERSION);
@@ -123,40 +164,22 @@ namespace Astroid {
     /* only show hints with a level higher than this */
     default_config.put ("astroid.hints.level", 0);
 
+    default_config.put ("astroid.log.syslog", false);
+    default_config.put ("astroid.log.stdout", true);
+
+# if DEBUG
+    default_config.put ("astroid.log.level", "debug"); // (trace, debug, info, warning, error, fatal)
+# else
+    default_config.put ("astroid.log.level", "info"); // (trace, debug, info, warning, error, fatal)
+# endif
+
     if (initial) {
-      /* initial default options - these are only set when a new
-       * configuration file is created. */
-
-      /* default example account:
-       *
-       * note: AccountManager will complain if there are no accounts defined.
-       *
-       */
-      default_config.put ("accounts.charlie.name", "Charlie Root");
-      default_config.put ("accounts.charlie.email", "root@localhost");
-      default_config.put ("accounts.charlie.gpgkey", "");
-      default_config.put ("accounts.charlie.always_gpg_sign", false);
-      default_config.put ("accounts.charlie.sendmail", "msmtp -i -t");
-      default_config.put ("accounts.charlie.default", true);
-      default_config.put ("accounts.charlie.save_sent", false);
-      default_config.put ("accounts.charlie.save_sent_to",
-          "/home/root/Mail/sent/cur/");
-      default_config.put ("accounts.charlie.additional_sent_tags", "");
-
-      default_config.put ("accounts.charlie.save_drafts_to",
-          "/home/root/Mail/drafts/");
-
-      default_config.put ("accounts.charlie.signature_separate", false);
-      default_config.put ("accounts.charlie.signature_file", "");
-      default_config.put ("accounts.charlie.signature_file_markdown", "");
-      default_config.put ("accounts.charlie.signature_default_on", true);
-      default_config.put ("accounts.charlie.signature_attach", false);
-
-      default_config.put ("accounts.charlie.select_query", "");
-
-      /* default searches, also only set if initial */
-      default_config.put("startup.queries.inbox", "tag:inbox");
+      setup_default_initial_config (default_config);
     }
+
+    /* terminal */
+    default_config.put ("terminal.height", 10);
+    default_config.put ("terminal.font_description", "default"); // https://developer.gnome.org/pango/stable/pango-Fonts.html#pango-font-description-from-string
 
     /* thread index */
     default_config.put ("thread_index.page_jump_rows", 6);
@@ -214,7 +237,8 @@ namespace Astroid {
     default_config.put ("mail.message_id_user", ""); // custom user for the message id: default: 'astroid'
     default_config.put ("mail.user_agent", "default");
     default_config.put ("mail.send_delay", 2); // wait seconds before sending, allowing to cancel
-    default_config.put ("mail.format_flowed", true); // mail sent with astroid can be reformatted using format_flowed
+    default_config.put ("mail.close_on_success", false); // close page automatically on succesful sending of message
+    default_config.put ("mail.format_flowed", false); // mail sent with astroid can be reformatted using format_flowed
 
     /* polling */
     default_config.put ("poll.interval", Poll::DEFAULT_POLL_INTERVAL); // seconds
@@ -222,7 +246,7 @@ namespace Astroid {
 
     /* attachments
      *
-     *   a chunk is saved and opened with the this command */
+     *   a chunk is saved and opened with this command */
     default_config.put ("attachment.external_open_cmd", "xdg-open");
 
     /* thread view
@@ -231,6 +255,10 @@ namespace Astroid {
      *            externally when this is set. the part is opened with
      *            'attachment.external_open_cmd'. */
     default_config.put ("thread_view.open_html_part_external", false);
+    default_config.put ("thread_view.preferred_type", "plain");
+    default_config.put ("thread_view.preferred_html_only", false);
+
+    default_config.put ("thread_view.allow_remote_when_encrypted", false);
 
     /*   if a link is clicked (html, ftp, etc..) it is executed with this
      *   command. */
@@ -239,17 +267,6 @@ namespace Astroid {
     default_config.put ("thread_view.default_save_directory", "~");
 
     default_config.put ("thread_view.indent_messages", false);
-
-    /* code prettify */
-    default_config.put ("thread_view.code_prettify.enable", true);
-
-    // a comma-separeted list of tags which code_prettify is enabled for, if empty,
-    // allow for all messages.
-    default_config.put ("thread_view.code_prettify.for_tags", "");
-
-    // the tag enclosing code
-    default_config.put ("thread_view.code_prettify.code_tag", "```");
-    default_config.put ("thread_view.code_prettify.enable_for_patches", true);
 
     /* gravatar */
     default_config.put ("thread_view.gravatar.enable", true);
@@ -263,6 +280,7 @@ namespace Astroid {
     /* crypto */
     default_config.put ("crypto.gpg.path", "gpg2");
     default_config.put ("crypto.gpg.always_trust", true);
+    default_config.put ("crypto.gpg.enabled", true);
 
     /* saved searches */
     default_config.put ("saved_searches.show_on_startup", false);
@@ -286,7 +304,12 @@ namespace Astroid {
       config.put ("poll.interval", 0);
       config.put ("accounts.charlie.gpgkey", "gaute@astroidmail.bar");
       config.put ("mail.send_delay", 0);
-      std::string test_nmcfg_path = path(current_path() / path ("tests/mail/test_config")).string();
+      std::string test_nmcfg_path;
+      if (getenv ("ASTROID_BUILD_DIR")) {
+        test_nmcfg_path = (current_path () / path ("tests/mail/test_config")).string();
+      } else {
+        test_nmcfg_path = (Resource::get_exe_dir () / path ("tests/mail/test_config")).string();
+      }
       boost::property_tree::read_ini (test_nmcfg_path, notmuch_config);
       has_notmuch_config = true;
       return;
@@ -310,7 +333,6 @@ namespace Astroid {
         LOG (warn) << "cf: no config, using defaults.";
       }
       config = setup_default_config (true);
-      write_back_config ();
     } else {
 
       /* loading config file */
@@ -321,9 +343,7 @@ namespace Astroid {
 
       merge_ptree (new_config);
 
-      if (!check_config (new_config)) {
-        write_back_config ();
-      }
+      check_config (new_config);
     }
 
     /* load save_dir */
@@ -347,6 +367,7 @@ namespace Astroid {
 
 
   bool Config::check_config (ptree new_config) {
+    LOG (debug) << "cf: check config..";
     bool changed = false;
 
     if (new_config != config) {
@@ -355,191 +376,31 @@ namespace Astroid {
 
     int version = config.get<int>("astroid.config.version");
 
-    if (version < 1) {
-      /* check accounts for save_draft */
-      ptree apt = config.get_child ("accounts");
-
-      for (auto &kv : apt) {
-        try {
-
-          ustring sto = kv.second.get<string> ("save_drafts_to");
-
-        } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-          LOG (warn) << "config: setting default save draft path for account: " << kv.first << ", please update!";
-          ustring key = ustring::compose ("accounts.%1.save_drafts_to", kv.first);
-          config.put (key.c_str (), "/home/root/Mail/drafts/");
-
-        }
-      }
-
-      changed = true;
-    }
-
-    if (version < 2) {
-      /* check accounts additional_sent_tags */
-      ptree apt = config.get_child ("accounts");
-
-      for (auto &kv : apt) {
-        try {
-
-          ustring sto = kv.second.get<string> ("additional_sent_tags");
-
-        } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-          ustring key = ustring::compose ("accounts.%1.additional_sent_tags", kv.first);
-          config.put (key.c_str (), "");
-        }
-      }
-
-      changed = true;
-    }
-
-    if (version < 3) {
-      LOG (warn) << "config: 'astroid.notmuch.sent_tags' have been moved to 'mail.sent_tags'";
-
-      config.put ("mail.sent_tags", config.get<string>("astroid.notmuch.sent_tags"));
-      config.erase ("astroid.notmuch.sent_tags");
-
-      changed = true;
-
-      LOG (warn) << "config: astroid now reads standard notmuch options from notmuch config, it is configured through: 'astroid.notmuch_config' and is now set to the default: ~/.notmuch-config. please validate!";
-    }
-
-    if (version < 10) {
-      /* check accounts signature */
-      ptree apt = config.get_child ("accounts");
-
-      for (auto &kv : apt) {
-        if (version < 5) {
-          try {
-
-            ustring sto = kv.second.get<string> ("signature_file");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.signature_file", kv.first);
-            config.put (key.c_str (), "");
-          }
-
-          try {
-
-            ustring sto = kv.second.get<string> ("signature_default_on");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.signature_default_on", kv.first);
-            config.put (key.c_str (), true);
-          }
-
-          try {
-
-            ustring sto = kv.second.get<string> ("signature_attach");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.signature_attach", kv.first);
-            config.put (key.c_str (), false);
-          }
-        }
-
-        if (version < 6) {
-          try {
-
-            ustring sto = kv.second.get<string> ("always_gpg_sign");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.always_gpg_sign", kv.first);
-            config.put (key.c_str (), false);
-          }
-        }
-
-        if (version < 8) {
-          try {
-
-            ustring ss = kv.second.get<string> ("signature_separate");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.signature_separate", kv.first);
-            config.put (key.c_str (), false);
-          }
-        }
-
-        if (version < 9) {
-          try {
-
-            ustring ss = kv.second.get<string> ("select_query");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.select_query", kv.first);
-            config.put (key.c_str (), "");
-          }
-        }
-
-        if (version < 10) {
-          try {
-
-            ustring sto = kv.second.get<string> ("signature_file_markdown");
-
-          } catch (const boost::property_tree::ptree_bad_path &ex) {
-
-            ustring key = ustring::compose ("accounts.%1.signature_file_markdown", kv.first);
-            config.put (key.c_str (), "");
-          }
-        }
-      }
-
-      changed = true;
-    }
-
-    /* check deprecated keys (as of version 3) */
-    try {
-      config.get<string> ("astroid.notmuch.db");
-
-      LOG (error) << "config: option 'astroid.notmuch.db' is deprecated, it is read from notmuch config.";
-    } catch (const boost::property_tree::ptree_bad_path &ex) { }
-
-
-    try {
-      config.get<string> ("astroid.notmuch.excluded_tags");
-      LOG (error) << "config: option 'astroid.notmuch.excluded_tags' is deprecated, it is read from notmuch config.";
-    } catch (const boost::property_tree::ptree_bad_path &ex) { }
-
-    try {
-      config.get<string> ("astroid.notmuch.sent_tags");
-      LOG (error) << "config: option 'astroid.notmuch.sent_tags' is deprecated, it is moved to 'mail.sent_tags'.";
-    } catch (const boost::property_tree::ptree_bad_path &ex) { }
-
-    /* generalized editor */
-    if (version < 4) {
+    {
+      bool hasstartup;
       try {
-        string gvim = config.get<string> ("editor.gvim.cmd");
-        string args = config.get<string> ("editor.gvim.args");
+        ptree strup = config.get_child ("startup");
+        hasstartup  = strup.get_child ("queries").size () > 0;
+      } catch (const boost::property_tree::ptree_bad_path &ex) {
+        hasstartup  = false;
+      }
 
-        string new_gvim = gvim + " -geom 10x10 --servername %2 --socketid %3 " + args + " %1";
+      bool hasaccounts;
+      try {
+        ptree apt   = config.get_child ("accounts");
+        hasaccounts = apt.size () > 0;
+      } catch (const boost::property_tree::ptree_bad_path &ex) {
+        hasaccounts = false;
+      }
 
-
-        LOG (warn) << "config: editor has been generalized, editor.cmd replaces gvim.cmd and gvim.args.";
-
-        config.put<string> ("editor.cmd", new_gvim);
-
-        changed = true;
-      } catch (const boost::property_tree::ptree_bad_path &ex) { }
+      if (!hasaccounts || !hasstartup) {
+        LOG (warn) << "cf: missing accounts or startup.queries: using defaults";
+        setup_default_initial_config (config, !hasaccounts, !hasstartup);
+      }
     }
-
-    try {
-      string gvim = config.get<string> ("editor.gvim.cmd");
-      string args = config.get<string> ("editor.gvim.args");
-
-      LOG (warn) << "editor.gvim.cmd and editor.gvim.args are replaced by editor.cmd, and may be removed.";
-    } catch (const boost::property_tree::ptree_bad_path &ex) { }
 
     if (version < CONFIG_VERSION) {
-      config.put ("astroid.config.version", CONFIG_VERSION);
-      changed = true;
+      LOG (error) << "cf: the config file is an old version (" << version << "), the current version is: " << CONFIG_VERSION;
     }
 
     if (changed) {

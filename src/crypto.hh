@@ -15,8 +15,12 @@ namespace Astroid {
       Crypto (ustring protocol);
       ~Crypto ();
 
+      // used as element id
+      int id = 0;
+
       bool ready = false;
       bool isgpg = false;
+      bool gpgenabled = true;
 
       GMimeObject * decrypt_and_verify (GMimeObject * mo);
       GMimeMessage * decrypt_message (GMimeMessage * in);

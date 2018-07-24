@@ -257,13 +257,20 @@ namespace Astroid {
   }
 
   bool ThreadIndex::on_index_action (ThreadView * tv, ThreadView::IndexAction action) {
+
+    if (list_view->filtered_store->children().size() < 1) {
+      return true;
+    }
+
     switch (action) {
       case ThreadView::IndexAction::IA_Next:
         {
           keys.handle ("thread_index.next_thread");
           auto thread = list_view->get_current_thread ();
-          tv->load_thread (thread);
-          tv->show ();
+          if (thread != tv->thread) {
+            tv->load_thread (thread);
+            tv->show ();
+          }
         }
         break;
 
@@ -271,8 +278,10 @@ namespace Astroid {
         {
           keys.handle ("thread_index.previous_thread");
           auto thread = list_view->get_current_thread ();
-          tv->load_thread (thread);
-          tv->show ();
+          if (thread != tv->thread) {
+            tv->load_thread (thread);
+            tv->show ();
+          }
         }
         break;
 
@@ -280,8 +289,10 @@ namespace Astroid {
         {
           keys.handle ("thread_index.next_unread");
           auto thread = list_view->get_current_thread ();
-          tv->load_thread (thread);
-          tv->show ();
+          if (thread != tv->thread) {
+            tv->load_thread (thread);
+            tv->show ();
+          }
         }
         break;
 
@@ -289,8 +300,10 @@ namespace Astroid {
         {
           keys.handle ("thread_index.previous_unread");
           auto thread = list_view->get_current_thread ();
-          tv->load_thread (thread);
-          tv->show ();
+          if (thread != tv->thread) {
+            tv->load_thread (thread);
+            tv->show ();
+          }
         }
         break;
     }
@@ -298,6 +311,7 @@ namespace Astroid {
   }
 
   void ThreadIndex::pre_close () {
+    queryloader.stop (true);
     if (packed > 1) del_pane (1);
 # ifndef DISABLE_PLUGINS
     plugins->deactivate ();

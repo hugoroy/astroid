@@ -46,7 +46,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
 else ()
   # release build - use hard-coded version string
-  set ( PROJECT_VERSION "0.11.0" )
+  set ( PROJECT_VERSION "0.13.0" )
 endif ()
 
 ##
@@ -54,7 +54,7 @@ endif ()
 #
 if(NOT DISABLE_PLUGINS)
   set (PLUGIN_NAMESPACE    "Astroid")
-  set (PLUGIN_API_VERSION  "0.1")
+  set (PLUGIN_API_VERSION  "0.2")
 endif()
 
 ##
@@ -65,7 +65,7 @@ option (DISABLE_EMBEDDED_EDITOR  "Disable embedded editor (default = enabled)"  
 option (DISABLE_PLUGINS          "Disable plugins (default = enabled)"            OFF)
 option (ENABLE_PROFILING         "Enable profiling (default = disabled)"          OFF)
 option (DISABLE_LIBSASS          "Disable libsass, requires a sassc compiler (default = enabled)" OFF)
-option (USE_GMIME_26             "Force the use of GMime 2.6"                     OFF)
+option (DEBUG_WEBKIT             "Turn on extra debug options for WebKit (default = disabled)"    OFF)
 
 set (SCSS_COMPILER "sassc" CACHE STRING "SCSS compiler to use when libsass is disabled (default = sassc)")
 
@@ -77,29 +77,21 @@ message (STATUS "Building ${PROJECT_NAME} ${PROJECT_VERSION}")
 ##
 # check for required packages and libraries
 #
+find_package( Notmuch REQUIRED )
+if (Notmuch_INDEX_FILE_API)
+  add_definitions ( -DHAVE_NOTMUCH_INDEX_FILE )
+endif()
+
 find_package ( PkgConfig REQUIRED )
 pkg_check_modules (GTKMM3     REQUIRED  gtkmm-3.0>=3.10)
 pkg_check_modules (GLIBMM2    REQUIRED  glibmm-2.4)
-
-if (NOT USE_GMIME_26)
-  pkg_check_modules (GMIME                gmime-3.0>=3.0.0)
-  set (GMIME_VER 3.0)
-endif ()
-
-if (USE_GMIME_26 OR ( NOT GMIME_FOUND ))
-  # fall back to gmime 2
-  pkg_check_modules (GMIME              gmime-2.6>=2.6.0)
-  set (GMIME_VER 2.6)
-  if (NOT GMIME_FOUND)
-    message (
-      FATAL_ERROR
-      "GMime 3 or GMime 2.6 required"
-      )
-  endif()
-endif()
-
-pkg_check_modules (WEBKITGTK3 REQUIRED  webkitgtk-3.0)
+pkg_check_modules (WEBKIT2GTK REQUIRED  webkit2gtk-4.0)
 pkg_check_modules (SASS       REQUIRED  libsass)
+pkg_check_modules (GIOMM2     REQUIRED  giomm-2.4)
+pkg_check_modules (GIOUNIX    REQUIRED  gio-unix-2.0)
+
+string (REGEX REPLACE "([0-9]+\.[0-9]+)\.[0-9]+" "\\1" GMIME_MAJOR_MINOR ${Notmuch_GMIME_VERSION})
+pkg_check_modules (GMIME      REQUIRED  gmime-${GMIME_MAJOR_MINOR}>=${Notmuch_GMIME_VERSION})
 
 find_package ( Threads )
 
@@ -114,34 +106,20 @@ find_package ( Boost REQUIRED
   system
   )
 
+find_package (Protobuf 3.0 REQUIRED)
+set (PROTO_FILES
+  src/modes/thread_view/webextension/messages.proto
+  )
+
+PROTOBUF_GENERATE_CPP (PROTO_SRC PROTO_HDR ${PROTO_FILES})
+
+
 if(APPLE)
-  # with homebrew, libtettext is keg-only, i.e. not symlinked into
-  # /usr/local, and it does not provide any pkg-config infromation of
+  # with homebrew, libgettext is keg-only, i.e. not symlinked into
+  # /usr/local, and it does not provide any pkg-config information of
   # its own; hence we have to locate it manually
   set ( Gettext_LDFLAGS "-L/usr/local/opt/gettext/lib" )
 endif(APPLE)
-
-find_path ( NOTMUCH_INCLUDE_DIR notmuch.h )
-find_library ( NOTMUCH_LIBRARY notmuch )
-include(FindPackageHandleStandardArgs)
-# handle the QUIETLY and REQUIRED arguments and set NOTMUCH_FOUND to TRUE
-# if all listed variables are TRUE
-find_package_handle_standard_args(notmuch  DEFAULT_MSG
-                                  NOTMUCH_LIBRARY NOTMUCH_INCLUDE_DIR)
-if(NOT NOTMUCH_FOUND)
-  message (FATAL_ERROR "notmuch library not found")
-endif()
-mark_as_advanced( NOTMUCH_INCLUDE_DIR NOTMUCH_LIBRARY )
-set( NOTMUCH_LIBRARIES ${NOTMUCH_LIBRARY} )
-set( NOTMUCH_INCLUDE_DIRS ${NOTMUCH_INCLUDE_DIR} )
-
-include ( CheckSymbolExists )
-set ( CMAKE_REQUIRED_INCLUDES ${NOTMUCH_INCLUDE_DIRS} )
-set ( CMAKE_REQUIRED_LIBRARIES ${NOTMUCH_LIBRARIES} )
-check_symbol_exists ( notmuch_database_index_file notmuch.h NOTMUCH_INDEX_FILE_API )
-if(NOTMUCH_INDEX_FILE_API)
-  add_definitions ( -DHAVE_NOTMUCH_INDEX_FILE )
-endif()
 
 pkg_check_modules (VTE2 vte-2.91)
 if(DISABLE_TERMINAL OR ( NOT VTE2_FOUND ))
@@ -161,18 +139,23 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 include_directories (
   ${GTKMM3_INCLUDE_DIRS}
   ${GLIBMM2_INCLUDE_DIRS}
+  ${GIOMM2_INCLUDE_DIRS}
+  ${GIOUNIX_INCLUDE_DIRS}
   ${GMIME_INCLUDE_DIRS}
-  ${WEBKITGTK3_INCLUDE_DIRS}
+  ${WEBKIT2GTK_INCLUDE_DIRS}
   ${VTE2_INCLUDE_DIRS}
   ${SASS_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
+  ${PROTOBUF_INCLUDE_DIRS}
   )
 
 add_compile_options (
   ${GTKMM3_CFLAGS}
   ${GLIBMM2_CFLAGS}
+  ${GIOMM2_CFLAGS}
+  ${GIOUNIX_CFLAGS}
   ${GMIME_CFLAGS}
-  ${WEBKITGTK3_CFLAGS}
+  ${WEBKIT2GTK_CFLAGS}
   ${VTE2_CFLAGS}
   ${SASS_CFLAGS}
   )
@@ -185,6 +168,7 @@ add_compile_options (
   )
 add_definitions (
   -DBOOST_LOG_DYN_LINK
+  -DBOOST_LOG_USE_NATIVE_SYSLOG
   )
 #
 # debug builds
@@ -205,57 +189,6 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
 add_compile_options (
   -O2
   )
-endif()
-
-##
-# Check if notmuch is compiled against the same GMime library
-#
-include(CheckCXXSourceRuns)
-unset ( CMAKE_REQUIRED_FLAGS )
-unset ( CMAKE_REQUIRED_INCLUDES )
-unset ( CMAKE_REQUIRED_LIBRARIES )
-# try_run will get confused and pass flags to cmake instead if they are connected with ";"
-string ( REPLACE ";" "," NEW_CFLAGS "${GMIME_CFLAGS}" )
-list ( APPEND CMAKE_REQUIRED_FLAGS "${NEW_CFLAGS}" )
-list ( APPEND CMAKE_REQUIRED_INCLUDES  ${GMIME_INCLUDE_DIRS} ${NOTMUCH_INCLUDE_DIRS} )
-list ( APPEND CMAKE_REQUIRED_LIBRARIES ${NOTMUCH_LIBRARIES} ${GMIME_LDFLAGS} )
-
-CHECK_CXX_SOURCE_RUNS(
-  "
-  # include <notmuch.h>
-  # include <gmime/gmime.h>
-
-  # include <iostream>
-
-  /* test if we are linked against the same GMime version as notmuch */
-
-  # if (GMIME_MAJOR_VERSION < 3)
-  # define g_mime_init() g_mime_init(0)
-  # define internet_address_list_parse(f,str) internet_address_list_parse_string(str)
-  # define internet_address_list_to_string(ia,f,encode) internet_address_list_to_string(ia,encode)
-  # endif
-
-  int main () {
-    g_mime_init ();
-
-    const char * a = \"Test <hey@asdf.da>\";
-    InternetAddressList * ia = internet_address_list_parse (NULL, a);
-
-    const char * addrs = internet_address_list_to_string (ia, NULL, false);
-
-    std::cout << \"address: \" << addrs << std::endl;
-
-    return 0;
-  }
-  "
-
-  GMIME_MATCHES)
-
-if (NOT GMIME_MATCHES)
-  message (
-    FATAL_ERROR
-    "You must compile and link against the same GMime version (e.g. 2.6 or 3) with both notmuch and astroid."
-    )
 endif()
 
 if (ENABLE_PROFILING)
@@ -298,10 +231,12 @@ include_directories (
   src/modes/editor
   src/modes/thread_index
   src/modes/thread_view
+  src/modes/thread_view/webextension
   src/plugin
   src/utils
   src/utils/gmime
   ${CMAKE_BINARY_DIR}/src	# needed to find the generated build_config.hh
+  ${CMAKE_BINARY_DIR}	    # needed to find protobuf files
   )
 
 add_library(
@@ -337,10 +272,11 @@ add_library(
   src/modes/thread_index/thread_index_list_cell_renderer.cc
   src/modes/thread_index/thread_index_list_view.cc
 
-  src/modes/thread_view/dom_utils.cc
   src/modes/thread_view/theme.cc
   src/modes/thread_view/thread_view.cc
-  src/modes/thread_view/web_inspector.cc
+  src/modes/thread_view/page_client.cc
+  src/modes/thread_view/webextension/ae_protocol.cc
+  src/modes/thread_view/webextension/dom_utils.cc
 
   src/actions/action.cc
   src/actions/action_manager.cc
@@ -363,6 +299,10 @@ add_library(
   src/utils/gmime/gmime-filter-html-bq.c
   src/utils/gmime/gtrie.c
   src/utils/gmime/url-scanner.c
+
+  ${PROTO_SRC}
+  ${PROTO_HDR}
+  ${PROTO_FILES}
   )
 
 add_executable (
@@ -375,21 +315,71 @@ target_link_libraries (
   astroid
 
   hypocycloid
-  ${NOTMUCH_LIBRARIES}
-  ${WEBKITGTK3_LDFLAGS}
+  ${Notmuch_LIBRARIES}
+  ${WEBKIT2GTK_LDFLAGS}
   ${GTKMM3_LDFLAGS}
   ${GLIBMM2_LDFLAGS}
+  ${GIOMM2_LDFLAGS}
+  ${GIOUINX_LDFLAGS}
   ${GMIME_LDFLAGS}
   ${VTE2_LDFLAGS}
   ${SASS_LDFLAGS}
   ${Boost_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
   ${Gettext_LDFLAGS}
+  ${PROTOBUF_LIBRARIES}
   )
+
+## Build Web Extension
+add_library (
+  tvextension SHARED
+
+  src/modes/thread_view/webextension/tvextension.cc
+  src/modes/thread_view/webextension/ae_protocol.cc
+  src/modes/thread_view/webextension/dom_utils.cc
+  src/utils/ustring_utils.cc
+  ${PROTO_SRC}
+  ${PROTO_HDR}
+  ${PROTO_FILES}
+  )
+
+target_link_libraries (
+  tvextension
+
+  ${WEBKIT2GTK_LDFLAGS}
+  ${GLIBMM2_LDFLAGS}
+  ${GIOMM2_LDFLAGS}
+  ${GIOUINX_LDFLAGS}
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GTKMM3_LDFLAGS}
+  ${Boost_LIBRARIES}
+  )
+
+target_compile_definitions (
+  tvextension PUBLIC
+
+  ASTROID_WEBEXTENSION
+  )
+
+add_dependencies (astroid tvextension)
+
+# Xcode needs to be explicitly told about the header files in order to
+# show them in the project and automatically display them in the
+# assitant editor
+if(CMAKE_GENERATOR STREQUAL "Xcode")
+  message(STATUS "Xcode build: adding headers to project")
+  file(GLOB_RECURSE my_header_files src/ "*.h" "*.hh")
+  target_sources(hypocycloid PRIVATE ${my_header_files})
+endif()
 
 ##
 # conditional compilation based on feature switches
 #
+if(DEBUG_WEBKIT)
+  add_definitions ( -DDEBUG_WEBKIT )
+  message (STATUS "Enabling debug WebKit.")
+endif()
 
 ##
 # pre-compiled style sheets (instead of dynamic at run-time)
@@ -398,6 +388,8 @@ if(DISABLE_LIBSASS)
   message (STATUS "Generating thread-view.css")
   add_custom_command ( TARGET astroid
     COMMAND ${SCSS_COMPILER} ${CMAKE_SOURCE_DIR}/ui/thread-view.scss ${CMAKE_BINARY_DIR}/thread-view.css )
+  add_custom_command ( TARGET astroid
+    COMMAND ${SCSS_COMPILER} ${CMAKE_SOURCE_DIR}/ui/part.scss ${CMAKE_BINARY_DIR}/part.css )
 endif()
 
 ##
@@ -443,7 +435,7 @@ else()
     set (GIR_NAME "${PLUGIN_NAMESPACE}-${PLUGIN_API_VERSION}.gir")
     set (${GIR_NAME}_NAMESPACE      ${PLUGIN_NAMESPACE})
     set (${GIR_NAME}_VERSION        ${PLUGIN_API_VERSION})
-    set (${GIR_NAME}_INCLUDEPKGS    GObject-2.0 GMime-${GMIME_VER})
+    set (${GIR_NAME}_INCLUDEPKGS    GObject-2.0 GMime-${GMIME_MAJOR_MINOR})
     set (${GIR_NAME}_PROGRAM        ${CMAKE_CURRENT_BINARY_DIR}/gir_main)
     set (${GIR_NAME}_FILES
       src/plugin/astroid_activatable.c
@@ -485,7 +477,7 @@ else()
       )
     target_link_libraries (
       gir_main
-      ${WEBKITGTK3_LDFLAGS}
+      ${WEBKIT2GTK_LDFLAGS}
       ${GTKMM3_LDFLAGS}
       ${PEAS_LDFLAGS}
       ${INTROSPECTION_LIBS}
@@ -508,6 +500,10 @@ endif(DISABLE_PLUGINS)
 install ( TARGETS astroid
   RUNTIME DESTINATION bin )
 
+install ( TARGETS tvextension
+  DESTINATION lib/astroid/web-extensions
+  )
+
 # icons are installed in three locations
 install (DIRECTORY ui/icons
   DESTINATION share/astroid/ui
@@ -529,10 +525,10 @@ install (FILES ui/thread-view.html ui/edit-message.glade ui/no-mail.png
   )
 
 if(DISABLE_LIBSASS)
-  install (FILES ${CMAKE_BINARY_DIR}/thread-view.css
+  install (FILES ${CMAKE_BINARY_DIR}/thread-view.css ${CMAKE_BINARY_DIR}/part.css
     DESTINATION share/astroid/ui )
 else()
-  install (FILES ui/thread-view.scss
+  install (FILES ui/thread-view.scss ui/part.scss
     DESTINATION share/astroid/ui)
 endif()
 

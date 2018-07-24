@@ -1,6 +1,6 @@
 # include "thread_view_activatable.h"
 # include <gtk/gtk.h>
-# include <webkit/webkit.h>
+# include <webkit2/webkit2.h>
 
 /**
  * SECTION: astroid_threadview_activatable
@@ -161,6 +161,34 @@ astroid_threadview_activatable_format_tags (AstroidThreadViewActivatable * activ
 	iface = ASTROID_THREADVIEW_ACTIVATABLE_GET_IFACE (activatable);
 	if (iface->format_tags)
 		return iface->format_tags (activatable, bg, tags, selected);
+
+  return NULL;
+}
+
+/**
+ * astroid_threadview_activatable_filter_part:
+ * @activatable: A #AstroidThreadViewActivatable.
+ * @input_text : A #utf8.
+ * @input_html : A #utf8.
+ * @mime_type : A #utf8.
+ * @is_patch : A #bool.
+ *
+ */
+char *
+astroid_threadview_activatable_filter_part (
+    AstroidThreadViewActivatable * activatable,
+    const char * input_text,
+    const char * input_html,
+    const char * mime_type,
+    bool         is_patch)
+{
+	AstroidThreadViewActivatableInterface *iface;
+
+	if (!ASTROID_IS_THREADVIEW_ACTIVATABLE (activatable)) return NULL;
+
+	iface = ASTROID_THREADVIEW_ACTIVATABLE_GET_IFACE (activatable);
+	if (iface->filter_part)
+		return iface->filter_part (activatable, input_text, input_html, mime_type, is_patch);
 
   return NULL;
 }
